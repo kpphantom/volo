@@ -40,7 +40,7 @@ services:
       dockerfile: Dockerfile
     container_name: volo-api
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://volo:volo@postgres:5432/volo
       REDIS_URL: redis://redis:6379
@@ -64,7 +64,7 @@ services:
       dockerfile: Dockerfile
     container_name: volo-web
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
     depends_on:
