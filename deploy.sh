@@ -1,6 +1,7 @@
 #!/bin/bash
 # ════════════════════════════════════════════════════════════
 # Volo — Production Deployment Script
+# Uses system nginx (shared with trading bot)
 # Domain: volo.kingpinstrategies.com
 # ════════════════════════════════════════════════════════════
 
@@ -47,86 +48,60 @@ if [ ! -f "$PROJECT_DIR/.env.prod" ]; then
 
     cat > "$PROJECT_DIR/.env.prod" << ENVEOF
 # ── Volo Production Environment ──
-# Auto-generated on $(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-# App
 APP_ENV=production
 APP_SECRET_KEY=${APP_SECRET}
 FRONTEND_URL=https://${DOMAIN}
-
-# Database
 POSTGRES_USER=volo
 POSTGRES_PASSWORD=${PG_PASS}
 POSTGRES_DB=volo
 DATABASE_URL=postgresql+asyncpg://volo:${PG_PASS}@postgres:5432/volo
-
-# Redis
 REDIS_PASSWORD=${REDIS_PASS}
 REDIS_URL=redis://:${REDIS_PASS}@redis:6379
-
-# Auth
 JWT_SECRET=${JWT_SECRET}
 JWT_ALGORITHM=HS256
 JWT_EXPIRY_HOURS=24
-
-# AI (REQUIRED — add your key!)
 ANTHROPIC_API_KEY=PASTE_YOUR_ANTHROPIC_KEY_HERE
-
-# X / Twitter OAuth 2.0 (optional — get from developer.x.com)
 TWITTER_CLIENT_ID=
 TWITTER_CLIENT_SECRET=
 TWITTER_REDIRECT_URI=https://${DOMAIN}/api/auth/twitter/callback
-
-# Google OAuth (optional)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ENVEOF
-    echo "✅ .env.prod created with random secrets"
-    echo ""
-    echo "📝 IMPORTANT: Add your ANTHROPIC_API_KEY:"
-    echo "   nano $PROJECT_DIR/.env.prod"
-    echo ""
-    read -p "Press Enter after editing .env.prod, or Ctrl+C to abort..."
+    echo "✅ .env.prod created"
+    echo "📝 Add your ANTHROPIC_API_KEY: nano $PROJECT_DIR/.env.prod"
+    read -p "Press Enter after editing, or Ctrl+C to abort..."
 fi
 
-# Validate critical env var
 set -a; source "$PROJECT_DIR/.env.prod"; set +a
 if [ "${ANTHROPIC_API_KEY:-}" = "PASTE_YOUR_ANTHROPIC_KEY_HERE" ]; then
-    echo "⚠️  Reminder: ANTHROPIC_API_KEY is not set in .env.prod (AI features won't work)"
+    echo "⚠️  ANTHROPIC_API_KEY not set (AI features won't work)"
 fi
 echo "✅ .env.prod loaded"
 
-# ── 3. SSL Certificate (bootstrap) ──────────────────────────
+# ── 3. Setup system nginx for Volo ──────────────────────────
 echo ""
-echo "▶ Checking SSL certificate..."
+echo "▶ Configuring system nginx..."
 
-HAS_CERTS=false
-# Check if cert volume already has certs
-if docker volume inspect volo_certbot_certs &>/dev/null 2>&1; then
-    # Check if actual cert files exist inside the volume
-    CERT_CHECK=$(docker run --rm -v volo_certbot_certs:/etc/letsencrypt alpine \
-        sh -c "ls /etc/letsencrypt/live/$DOMAIN/fullchain.pem 2>/dev/null && echo 'found'" 2>/dev/null || echo "")
-    if [ "$CERT_CHECK" = "found" ]; then
-        HAS_CERTS=true
-    fi
+# Install nginx site config
+cp "$PROJECT_DIR/nginx/volo-site.conf" /etc/nginx/sites-available/volo
+
+# Enable site
+if [ ! -L /etc/nginx/sites-enabled/volo ]; then
+    ln -s /etc/nginx/sites-available/volo /etc/nginx/sites-enabled/volo
 fi
 
-if [ "$HAS_CERTS" = true ]; then
-    echo "✅ SSL certificates exist"
-    NGINX_CONF="nginx.conf"
-else
-    echo "📜 No SSL certificates yet — starting in HTTP-only mode..."
-    NGINX_CONF="nginx-initial.conf"
-fi
+# Test nginx config
+nginx -t 2>&1 && echo "✅ Nginx config valid" || { echo "❌ Nginx config error"; exit 1; }
 
-# ── 4. Build & Deploy ───────────────────────────────────────
+# Reload nginx
+systemctl reload nginx
+echo "✅ System nginx configured for $DOMAIN"
+
+# ── 4. Build & Deploy Docker containers ─────────────────────
 echo ""
 echo "▶ Building and deploying..."
 
 cd "$PROJECT_DIR"
-
-# Use the right nginx config
-cp "$PROJECT_DIR/nginx/$NGINX_CONF" "$PROJECT_DIR/nginx/active.conf"
 
 # Pull base images
 $COMPOSE -f docker-compose.prod.yml pull postgres redis 2>/dev/null || true
@@ -142,87 +117,66 @@ $COMPOSE -f docker-compose.prod.yml build web
 echo "🚀 Starting services..."
 $COMPOSE -f docker-compose.prod.yml up -d
 
-# ── 5. Get SSL if needed ────────────────────────────────────
-if [ "$HAS_CERTS" = false ]; then
-    echo ""
-    echo "▶ Obtaining SSL certificate from Let's Encrypt..."
-    sleep 5  # Wait for nginx to start
+# ── 5. SSL via system certbot ───────────────────────────────
+echo ""
+echo "▶ Checking SSL..."
 
-    # Run certbot
-    docker run --rm \
-        -v volo_certbot_certs:/etc/letsencrypt \
-        -v volo_certbot_www:/var/www/certbot \
-        certbot/certbot certonly \
-        --webroot -w /var/www/certbot \
-        -d "$DOMAIN" \
-        --email "$EMAIL" \
-        --agree-tos \
-        --non-interactive
+if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+    echo "✅ SSL certificate exists"
+else
+    echo "📜 Getting SSL certificate..."
 
-    if [ $? -eq 0 ]; then
-        echo "✅ SSL certificate obtained!"
-
-        # Switch nginx to HTTPS config
-        cp "$PROJECT_DIR/nginx/nginx.conf" "$PROJECT_DIR/nginx/active.conf"
-        docker exec volo-nginx nginx -s reload 2>/dev/null || \
-            $COMPOSE -f docker-compose.prod.yml restart nginx
-
-        echo "✅ Nginx switched to HTTPS mode"
-    else
-        echo "⚠️  SSL certificate failed — running on HTTP only"
-        echo "   Make sure DNS points $DOMAIN → this server"
-        echo "   Then re-run this script"
+    # Install certbot if needed
+    if ! command -v certbot &>/dev/null; then
+        apt-get install -y -qq certbot python3-certbot-nginx
     fi
+
+    # Get cert via nginx plugin (uses existing system nginx)
+    certbot --nginx -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive --redirect
+
+    echo "✅ SSL certificate obtained & nginx updated"
 fi
 
 # ── 6. Health check ──────────────────────────────────────────
 echo ""
-echo "▶ Waiting for services to be healthy..."
+echo "▶ Waiting for services..."
 sleep 10
 
-# Check services via docker
-echo ""
-$COMPOSE -f docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || \
-    $COMPOSE -f docker-compose.prod.yml ps
+$COMPOSE -f docker-compose.prod.yml ps
 
-# Check API health
+# Check API
 for i in 1 2 3; do
-    API_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/health 2>/dev/null || echo "000")
+    API_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null || echo "000")
     if [ "$API_HEALTH" = "200" ]; then
         echo "✅ API is healthy"
         break
     fi
     [ "$i" -lt 3 ] && sleep 5
 done
-if [ "$API_HEALTH" != "200" ]; then
-    echo "⚠️  API returned HTTP $API_HEALTH"
-    echo "   Check logs: $COMPOSE -f docker-compose.prod.yml logs api"
-fi
+[ "$API_HEALTH" != "200" ] && echo "⚠️  API: HTTP $API_HEALTH — check: $COMPOSE -f docker-compose.prod.yml logs api"
 
-# Check via domain
-if [ "$HAS_CERTS" = true ]; then
-    SITE_URL="https://$DOMAIN"
-else
-    SITE_URL="http://$DOMAIN"
-fi
-SITE_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "$SITE_URL" 2>/dev/null || echo "000")
+# Check site
+SITE_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "https://$DOMAIN" 2>/dev/null || echo "000")
 if [ "$SITE_HEALTH" = "200" ] || [ "$SITE_HEALTH" = "301" ]; then
-    echo "✅ Site is reachable at $SITE_URL"
+    echo "✅ Site live at https://$DOMAIN"
 else
-    echo "⚠️  Site returned HTTP $SITE_HEALTH at $SITE_URL"
+    SITE_HEALTH_HTTP=$(curl -s -o /dev/null -w "%{http_code}" "http://$DOMAIN" 2>/dev/null || echo "000")
+    if [ "$SITE_HEALTH_HTTP" = "200" ] || [ "$SITE_HEALTH_HTTP" = "301" ]; then
+        echo "✅ Site live at http://$DOMAIN (SSL pending)"
+    else
+        echo "⚠️  Site returned HTTP $SITE_HEALTH_HTTP"
+    fi
 fi
 
 echo ""
 echo "══════════════════════════════════════════"
 echo "  ✅ Volo is deployed!"
 echo ""
-echo "  🌐 $SITE_URL"
+echo "  🌐 https://$DOMAIN"
 echo ""
-echo "  Useful commands:"
-echo "  • Logs:    docker compose -f docker-compose.prod.yml logs -f"
-echo "  • API log: docker compose -f docker-compose.prod.yml logs -f api"
-echo "  • Status:  docker compose -f docker-compose.prod.yml ps"
-echo "  • Restart: docker compose -f docker-compose.prod.yml restart"
+echo "  Commands:"
+echo "  • Logs:     docker compose -f docker-compose.prod.yml logs -f"
+echo "  • Status:   docker compose -f docker-compose.prod.yml ps"
+echo "  • Restart:  docker compose -f docker-compose.prod.yml restart"
 echo "  • Redeploy: git pull && bash deploy.sh"
-echo "  • Stop:    docker compose -f docker-compose.prod.yml down"
 echo "══════════════════════════════════════════"
