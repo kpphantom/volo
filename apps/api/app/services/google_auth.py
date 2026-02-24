@@ -3,17 +3,17 @@ VOLO — Google OAuth & Services Discovery
 DB-backed token storage with in-memory cache for fast sync access.
 """
 
-import os
 import httpx
 from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy import select
 
+from app.config import settings
 from app.database import async_session, Integration, User
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:3000/auth/google/callback")
+GOOGLE_CLIENT_ID = settings.google_client_id
+GOOGLE_CLIENT_SECRET = settings.google_client_secret
+GOOGLE_REDIRECT_URI = settings.google_redirect_uri or f"{settings.frontend_url}/auth/google/callback"
 
 GOOGLE_SCOPES = [
     "openid",

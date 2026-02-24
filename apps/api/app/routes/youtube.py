@@ -3,10 +3,11 @@ VOLO — YouTube Routes
 Video info, transcript extraction, and AI-powered summaries.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 
+from app.auth import get_current_user, CurrentUser
 from app.services.youtube import YouTubeService
 from app.services.google_auth import google_auth
 
@@ -19,18 +20,18 @@ class SummarizeRequest(BaseModel):
 
 
 @router.get("/youtube/video")
-async def get_video_info(url: str = Query(..., description="YouTube URL or video ID")):
+async def get_video_info(url: str = Query(..., description="YouTube URL or video ID"), current_user: CurrentUser = Depends(get_current_user)):
     """Get video metadata."""
-    token = google_auth.get_access_token("dev-user") or ""
+    token = google_auth.get_access_token(current_user.user_id) or ""
     yt = YouTubeService(access_token=token)
     info = await yt.get_video_info(url)
     return info
 
 
 @router.get("/youtube/transcript")
-async def get_transcript(url: str = Query(..., description="YouTube URL or video ID")):
+async def get_transcript(url: str = Query(..., description="YouTube URL or video ID"), current_user: CurrentUser = Depends(get_current_user)):
     """Get video transcript/captions."""
-    token = google_auth.get_access_token("dev-user") or ""
+    token = google_auth.get_access_token(current_user.user_id) or ""
     yt = YouTubeService(access_token=token)
     transcript = await yt.get_transcript(url)
     if not transcript:
@@ -39,9 +40,9 @@ async def get_transcript(url: str = Query(..., description="YouTube URL or video
 
 
 @router.post("/youtube/summarize")
-async def summarize_video(body: SummarizeRequest):
+async def summarize_video(body: SummarizeRequest, current_user: CurrentUser = Depends(get_current_user)):
     """Get an AI-generated summary of a YouTube video."""
-    token = google_auth.get_access_token("dev-user") or ""
+    token = google_auth.get_access_token(current_user.user_id) or ""
     yt = YouTubeService(access_token=token)
 
     # Get video info
@@ -101,18 +102,18 @@ Content:
 
 
 @router.get("/youtube/search")
-async def search_youtube(q: str = Query(...), limit: int = Query(10, ge=1, le=50)):
+async def search_youtube(q: str = Query(...), limit: int = Query(10, ge=1, le=50), current_user: CurrentUser = Depends(get_current_user)):
     """Search YouTube videos."""
-    token = google_auth.get_access_token("dev-user") or ""
+    token = google_auth.get_access_token(current_user.user_id) or ""
     yt = YouTubeService(access_token=token)
     results = await yt.search_videos(q, max_results=limit)
     return {"results": results, "query": q}
 
 
 @router.get("/youtube/subscriptions")
-async def get_subscriptions():
+async def get_subscriptions(current_user: CurrentUser = Depends(get_current_user)):
     """Get user's YouTube subscriptions."""
-    token = google_auth.get_access_token("dev-user") or ""
+    token = google_auth.get_access_token(current_user.user_id) or ""
     yt = YouTubeService(access_token=token)
     subs = await yt.get_subscriptions()
     return {"subscriptions": subs}
