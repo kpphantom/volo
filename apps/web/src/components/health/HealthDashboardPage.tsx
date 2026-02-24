@@ -20,6 +20,7 @@ import {
   ArrowDown,
   Minus,
 } from 'lucide-react';
+import { api } from '@/lib/api';
 
 interface StepData {
   date: string;
@@ -89,11 +90,10 @@ export function HealthDashboardPage() {
   const fetchDashboard = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/health/dashboard');
-      const json = await res.json();
+      const json = await api.get<DashboardData>('/api/health/dashboard');
       setData(json);
     } catch {
-      // Use demo data on error
+      // Show demo data when API unavailable — remove once health integrations are connected
       setData(getDemoData());
     } finally {
       setLoading(false);

@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { api, API_URL } from '@/lib/api';
 
 interface SystemStatus {
   api: 'online' | 'offline' | 'checking';
@@ -49,27 +49,24 @@ export function DashboardPage() {
 
   const checkSystemHealth = async () => {
     try {
-      const res = await fetch(`${API_URL}/health`);
-      if (res.ok) {
-        setStatus((s) => ({ ...s, api: 'online' }));
-      } else {
-        setStatus((s) => ({ ...s, api: 'offline' }));
-      }
+      await api.get('/health');
+      setStatus((s) => ({ ...s, api: 'online' }));
     } catch {
       setStatus((s) => ({ ...s, api: 'offline' }));
     }
 
-    // Check AI status
     try {
-      const res = await fetch(`${API_URL}/api/system/status`);
-      if (res.ok) {
-        const data = await res.json();
-        setStatus((s) => ({
-          ...s,
-          ai: data.ai_configured ? 'active' : 'setup-needed',
-          integrations: data.integrations_count || 0,
-          memories: data.memories_count || 0,
-        }));
+      const data = await api.get<{ ai_configured?: boolean; integrations_count?: number; memories_count?: number; uptime_seconds?: number }>('/api/system/status');
+      setStatus((s) => ({
+        ...s,
+        ai: data?.ai_configured ? 'active' : 'setup-needed',
+        integrations: data?.integrations_count || 0,
+        memories: data?.memories_count || 0,
+      }));
+      if (data?.uptime_seconds) {
+        const h = Math.floor(data.uptime_seconds / 3600);
+        const m = Math.floor((data.uptime_seconds % 3600) / 60);
+        setUptime(`${h}h ${m}m`);
       }
     } catch {
       setStatus((s) => ({ ...s, ai: 'setup-needed' }));
@@ -77,6 +74,7 @@ export function DashboardPage() {
   };
 
   const getUptime = () => {
+    if (uptime) return uptime;
     const now = new Date();
     return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };

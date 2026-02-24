@@ -12,6 +12,8 @@ import {
   Zap,
   Calendar,
 } from 'lucide-react';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface StandingOrder {
   id: string;
@@ -39,34 +41,10 @@ export function StandingOrdersPage() {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/standing-orders`);
-      if (res.ok) {
-        const data = await res.json();
-        setOrders(data.orders || []);
-      }
+      const data = await api.get<{ orders: StandingOrder[] }>('/api/standing-orders');
+      setOrders(data?.orders || []);
     } catch {
-      setOrders([
-        {
-          id: '1',
-          name: 'Morning Briefing',
-          schedule: '0 9 * * 1-5',
-          prompt: 'Give me a morning briefing: important emails, today\'s calendar, portfolio changes, and top priorities.',
-          enabled: true,
-          last_run: new Date(Date.now() - 86400000).toISOString(),
-          next_run: new Date(Date.now() + 43200000).toISOString(),
-          run_count: 14,
-        },
-        {
-          id: '2',
-          name: 'Weekly Code Review',
-          schedule: '0 17 * * 5',
-          prompt: 'Review all open PRs across my repos and summarize what needs attention.',
-          enabled: true,
-          last_run: null,
-          next_run: null,
-          run_count: 0,
-        },
-      ]);
+      setOrders([]);
     } finally {
       setLoading(false);
     }
@@ -74,51 +52,55 @@ export function StandingOrdersPage() {
 
   const createOrder = async () => {
     try {
-      const res = await fetch(`${API}/api/standing-orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-      if (res.ok) {
-        setShowForm(false);
-        setFormData({ name: '', schedule: '0 9 * * *', prompt: '' });
-        fetchOrders();
-      }
-    } catch {
-      // local only
-      const newOrder: StandingOrder = {
-        id: crypto.randomUUID(),
-        ...formData,
-        enabled: true,
-        last_run: null,
-        next_run: null,
-        run_count: 0,
-      };
-      setOrders((o) => [...o, newOrder]);
+      await api.post('/api/standing-orders', formData);
+      toast.success('Standing order created');
       setShowForm(false);
       setFormData({ name: '', schedule: '0 9 * * *', prompt: '' });
+      fetchOrders();
+    } catch {
+      toast.error('Failed to create standing order');
     }
   };
 
   const toggleOrder = async (id: string) => {
+    const order = orders.find((o) => o.id === id);
+    if (!order) return;
+    const newEnabled = !order.enabled;
     setOrders((o) =>
       o.map((order) =>
-        order.id === id ? { ...order, enabled: !order.enabled } : order,
+        order.id === id ? { ...order, enabled: newEnabled } : order,
       ),
     );
+    try {
+      await api.patch(`/api/standing-orders/${id}`, { enabled: newEnabled });
+      toast.success(newEnabled ? 'Order enabled' : 'Order paused');
+    } catch {
+      setOrders((o) =>
+        o.map((order) =>
+          order.id === id ? { ...order, enabled: !newEnabled } : order,
+        ),
+      );
+      toast.error('Failed to update order');
+    }
   };
 
   const deleteOrder = async (id: string) => {
     try {
-      await fetch(`${API}/api/standing-orders/${id}`, { method: 'DELETE' });
-    } catch {}
+      await api.delete(`/api/standing-orders/${id}`);
+      toast.success('Order deleted');
+    } catch {
+      toast.error('Failed to delete order');
+    }
     setOrders((o) => o.filter((order) => order.id !== id));
   };
 
   const runNow = async (id: string) => {
     try {
-      await fetch(`${API}/api/standing-orders/${id}/run`, { method: 'POST' });
-    } catch {}
+      await api.post(`/api/standing-orders/${id}/run`, {});
+      toast.success('Order executed! Check chat for results.');
+    } catch {
+      toast.error('Failed to run order');
+    }
   };
 
   const scheduleLabels: Record<string, string> = {

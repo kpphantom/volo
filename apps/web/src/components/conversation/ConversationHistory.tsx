@@ -14,6 +14,8 @@ import {
 import { useConversationStore } from '@/stores/conversationStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useAppStore } from '@/stores/appStore';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 export function ConversationHistory() {
   const { conversations, loading, searchQuery, fetchConversations, deleteConversation, renameConversation, setSearchQuery } =
@@ -44,9 +46,56 @@ export function ConversationHistory() {
     setEditingId(null);
   };
 
-  const openConversation = (id: string) => {
-    // Load conversation into chat
-    useAppStore.getState().setPage('chat');
+  const openConversation = async (id: string) => {
+    try {
+      // Fetch messages for this conversation from the API
+      const data = await api.get<{ messages?: Array<{ role: string; content: string; created_at: string }> }>(`/api/conversations/${id}/messages`);
+      const msgs = (data.messages || []).map((m: { role: string; content: string; created_at: string }, i: number) => ({
+        id: `${id}-${i}`,
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        timestamp: new Date(m.created_at),
+        status: 'sent' as const,
+      }));
+
+      // Load messages into chat store
+      useChatStore.setState({
+        messages: msgs,
+        conversationId: id,
+        isThinking: false,
+      });
+
+      // Navigate to chat
+      useAppStore.getState().setPage('chat');
+    } catch {
+      // If API fails, just navigate to chat with this conversation ID
+      useChatStore.setState({ conversationId: id });
+      useAppStore.getState().setPage('chat');
+      toast.error('Could not load conversation messages');
+    }
+  };
+
+  const exportConversation = async (conv: { id: string; title: string }) => {
+    setMenuOpen(null);
+    try {
+      const data = await api.get<{ messages?: Array<{ role: string; content: string; created_at: string }> }>(`/api/conversations/${conv.id}/messages`);
+      const msgs = data.messages || [];
+      const exportData = {
+        title: conv.title,
+        exported_at: new Date().toISOString(),
+        messages: msgs,
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `volo-conversation-${conv.title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Conversation exported');
+    } catch {
+      toast.error('Failed to export conversation');
+    }
   };
 
   const formatDate = (ts: string) => {
@@ -144,7 +193,7 @@ export function ConversationHistory() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setMenuOpen(null);
+                            exportConversation(conv);
                           }}
                           className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]"
                         >

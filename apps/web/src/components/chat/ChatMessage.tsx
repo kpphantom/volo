@@ -2,9 +2,12 @@
 
 import { Brain, User, Copy, RotateCcw, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useState } from 'react';
+import { useChatStore } from '@/stores/chatStore';
+import { toast } from 'sonner';
 
 export interface ToolCall {
   id: string;
@@ -29,11 +32,43 @@ interface ChatMessageProps {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRegenerate = () => {
+    // Find the last user message and resend it
+    const messages = useChatStore.getState().messages;
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+    if (lastUserMsg) {
+      // Remove the current assistant message and all messages after
+      const msgIndex = messages.findIndex((m) => m.id === message.id);
+      if (msgIndex >= 0) {
+        useChatStore.setState({
+          messages: messages.slice(0, msgIndex),
+        });
+      }
+      useChatStore.getState().sendMessage(lastUserMsg.content);
+      toast.info('Regenerating response...');
+    }
+  };
+
+  const handleFeedback = async (type: 'up' | 'down') => {
+    setFeedback(type);
+    try {
+      await api.post('/api/chat/feedback', {
+        message_id: message.id,
+        conversation_id: useChatStore.getState().conversationId,
+        feedback: type === 'up' ? 'positive' : 'negative',
+      });
+      toast.success(type === 'up' ? 'Thanks for the feedback!' : 'Feedback noted, we\'ll improve');
+    } catch {
+      // Feedback is best-effort, don't show error
+    }
   };
 
   return (
@@ -235,14 +270,26 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 <Copy className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400" />
               )}
             </button>
-            <button className="p-1.5 rounded-lg hover:bg-white/5 transition-colors group" title="Regenerate">
+            <button
+              onClick={handleRegenerate}
+              className="p-1.5 rounded-lg hover:bg-white/5 transition-colors group"
+              title="Regenerate"
+            >
               <RotateCcw className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400" />
             </button>
-            <button className="p-1.5 rounded-lg hover:bg-white/5 transition-colors group" title="Good response">
-              <ThumbsUp className="w-3 h-3 text-zinc-600 group-hover:text-emerald-400" />
+            <button
+              onClick={() => handleFeedback('up')}
+              className="p-1.5 rounded-lg hover:bg-white/5 transition-colors group"
+              title="Good response"
+            >
+              <ThumbsUp className={cn('w-3 h-3', feedback === 'up' ? 'text-emerald-400' : 'text-zinc-600 group-hover:text-emerald-400')} />
             </button>
-            <button className="p-1.5 rounded-lg hover:bg-white/5 transition-colors group" title="Bad response">
-              <ThumbsDown className="w-3 h-3 text-zinc-600 group-hover:text-red-400" />
+            <button
+              onClick={() => handleFeedback('down')}
+              className="p-1.5 rounded-lg hover:bg-white/5 transition-colors group"
+              title="Bad response"
+            >
+              <ThumbsDown className={cn('w-3 h-3', feedback === 'down' ? 'text-red-400' : 'text-zinc-600 group-hover:text-red-400')} />
             </button>
           </div>
         )}

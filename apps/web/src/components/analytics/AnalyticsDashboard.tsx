@@ -27,13 +27,15 @@ interface ToolUsage {
   percentage: number;
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 export function AnalyticsDashboard() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<UsageStat[]>([]);
   const [toolUsage, setToolUsage] = useState<ToolUsage[]>([]);
   const [timeRange, setTimeRange] = useState('7d');
+  const [dailyData, setDailyData] = useState<number[]>([]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -42,56 +44,46 @@ export function AnalyticsDashboard() {
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
-      const [usageRes, convoRes] = await Promise.all([
-        fetch(`${API}/api/analytics/usage`),
-        fetch(`${API}/api/analytics/conversations`),
+      const [usage, convo] = await Promise.all([
+        api.get<{ messages_today?: number; tool_calls?: number; avg_response_ms?: number; tools?: ToolUsage[]; daily?: number[] }>(`/api/analytics/usage?range=${timeRange}`),
+        api.get<{ total?: number; change?: number }>(`/api/analytics/conversations?range=${timeRange}`),
       ]);
-      if (usageRes.ok) {
-        const usage = await usageRes.json();
-        const convo = convoRes.ok ? await convoRes.json() : {};
-        setStats([
-          {
-            label: 'Conversations',
-            value: String(convo.total || 0),
-            change: 12,
-            icon: <MessageSquare className="w-5 h-5" />,
-          },
-          {
-            label: 'Messages',
-            value: String(usage.messages_today || 0),
-            change: 8,
-            icon: <Zap className="w-5 h-5" />,
-          },
-          {
-            label: 'Tool Calls',
-            value: String(usage.tool_calls || 0),
-            change: -3,
-            icon: <Wrench className="w-5 h-5" />,
-          },
-          {
-            label: 'Avg Response',
-            value: `${usage.avg_response_ms || 0}ms`,
-            change: -15,
-            icon: <Clock className="w-5 h-5" />,
-          },
-        ]);
-      }
-    } catch {
-      // Placeholder
       setStats([
-        { label: 'Conversations', value: '47', change: 12, icon: <MessageSquare className="w-5 h-5" /> },
-        { label: 'Messages', value: '284', change: 8, icon: <Zap className="w-5 h-5" /> },
-        { label: 'Tool Calls', value: '156', change: -3, icon: <Wrench className="w-5 h-5" /> },
-        { label: 'Avg Response', value: '1.2s', change: -15, icon: <Clock className="w-5 h-5" /> },
+        {
+          label: 'Conversations',
+          value: String(convo?.total || 0),
+          change: convo?.change || 0,
+          icon: <MessageSquare className="w-5 h-5" />,
+        },
+        {
+          label: 'Messages',
+          value: String(usage?.messages_today || 0),
+          change: 0,
+          icon: <Zap className="w-5 h-5" />,
+        },
+        {
+          label: 'Tool Calls',
+          value: String(usage?.tool_calls || 0),
+          change: 0,
+          icon: <Wrench className="w-5 h-5" />,
+        },
+        {
+          label: 'Avg Response',
+          value: `${usage?.avg_response_ms || 0}ms`,
+          change: 0,
+          icon: <Clock className="w-5 h-5" />,
+        },
       ]);
-      setToolUsage([
-        { name: 'trading_quote', count: 45, percentage: 29 },
-        { name: 'github_list_repos', count: 32, percentage: 21 },
-        { name: 'store_memory', count: 28, percentage: 18 },
-        { name: 'search_memory', count: 22, percentage: 14 },
-        { name: 'email_list_inbox', count: 15, percentage: 10 },
-        { name: 'machine_run_command', count: 14, percentage: 9 },
+      if (usage?.tools) setToolUsage(usage.tools);
+      if (usage?.daily) setDailyData(usage.daily);
+    } catch {
+      setStats([
+        { label: 'Conversations', value: '0', change: 0, icon: <MessageSquare className="w-5 h-5" /> },
+        { label: 'Messages', value: '0', change: 0, icon: <Zap className="w-5 h-5" /> },
+        { label: 'Tool Calls', value: '0', change: 0, icon: <Wrench className="w-5 h-5" /> },
+        { label: 'Avg Response', value: '0ms', change: 0, icon: <Clock className="w-5 h-5" /> },
       ]);
+      setToolUsage([]);
     } finally {
       setLoading(false);
     }
@@ -185,13 +177,14 @@ export function AnalyticsDashboard() {
             Usage Over Time
           </h2>
           <div className="h-48 flex items-end gap-1">
-            {Array.from({ length: 30 }, (_, i) => {
-              const height = 20 + Math.random() * 80;
+            {(dailyData.length > 0 ? dailyData : Array.from({ length: 30 }, () => 0)).map((val, i) => {
+              const maxVal = Math.max(...(dailyData.length > 0 ? dailyData : [1]));
+              const height = maxVal > 0 ? (val / maxVal) * 100 : 5;
               return (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
                   <div
                     className="w-full bg-blue-500/30 hover:bg-blue-500/50 rounded-t transition-colors"
-                    style={{ height: `${height}%` }}
+                    style={{ height: `${Math.max(height, 2)}%` }}
                   />
                 </div>
               );

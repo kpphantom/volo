@@ -8,6 +8,10 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
+import { useAppStore } from '@/stores/appStore';
+import { useChatStore } from '@/stores/chatStore';
 
 interface GoogleService {
   id: string;
@@ -53,8 +57,7 @@ export function GoogleServicesPage() {
 
   const fetchServices = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/google/services');
-      const data = await res.json();
+      const data = await api.get<{ services: GoogleService[]; connected: boolean }>('/api/google/services');
       setServices(data.services || []);
       setConnected(data.connected || false);
     } catch {
@@ -80,8 +83,8 @@ export function GoogleServicesPage() {
 
   const fetchProfile = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/google/profile');
-      setProfile(await res.json());
+      const data = await api.get<{ name?: string; email?: string; picture?: string }>('/api/google/profile');
+      setProfile(data);
     } catch {
       setProfile({ name: 'Volo User', email: 'user@gmail.com' });
     }
@@ -89,8 +92,7 @@ export function GoogleServicesPage() {
 
   const handleGoogleSignIn = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/google/auth-url');
-      const data = await res.json();
+      const data = await api.get<{ auth_url: string }>('/api/google/auth-url');
       window.open(data.auth_url, '_blank', 'width=500,height=600');
     } catch {
       // Demo mode
@@ -247,6 +249,18 @@ export function GoogleServicesPage() {
             ].map((action) => (
               <button
                 key={action.label}
+                onClick={() => {
+                  const setPage = useAppStore.getState().setPage;
+                  const sendMessage = useChatStore.getState().sendMessage;
+                  if (action.label === 'Health Overview') {
+                    setPage('health');
+                  } else if (action.label === 'Summarize Video') {
+                    setPage('youtube');
+                  } else {
+                    setPage('chat');
+                    setTimeout(() => sendMessage(action.desc), 100);
+                  }
+                }}
                 className="flex items-center gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 transition-all text-left group"
               >
                 <action.icon className={cn('w-5 h-5', action.color)} />

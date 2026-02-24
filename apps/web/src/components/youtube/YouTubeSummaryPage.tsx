@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 type SummaryStyle = 'concise' | 'detailed' | 'bullet_points' | 'eli5';
 
@@ -55,13 +57,7 @@ export function YouTubeSummaryPage() {
     setResult(null);
 
     try {
-      const res = await fetch('http://localhost:8000/api/youtube/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim(), style }),
-      });
-      if (!res.ok) throw new Error('Failed to summarize');
-      const data = await res.json();
+      const data = await api.post<SummaryResult>('/api/youtube/summarize', { url: url.trim(), style });
       setResult(data);
     } catch {
       setError('Could not summarize this video. Please check the URL and try again.');
@@ -74,9 +70,8 @@ export function YouTubeSummaryPage() {
     if (!searchQuery.trim()) return;
     setSearching(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/youtube/search?q=${encodeURIComponent(searchQuery)}&limit=6`);
-      const data = await res.json();
-      setSearchResults(data.results || []);
+      const data = await api.get<{ results: VideoInfo[] }>(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}&limit=6`);
+      setSearchResults(data?.results || []);
     } catch {
       setSearchResults([]);
     } finally {
@@ -264,7 +259,7 @@ export function YouTubeSummaryPage() {
                     >
                       {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                     </button>
-                    <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors">
+                    <button onClick={() => { const shareUrl = result?.video?.url || url; if (navigator.share) { navigator.share({ title: result?.video?.title || 'YouTube Summary', text: result?.summary?.slice(0, 200), url: shareUrl }).catch(() => {}); } else { navigator.clipboard.writeText(result?.summary || ''); toast.success('Summary copied to clipboard!'); } }} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors" title="Share summary">
                       <Share2 className="w-4 h-4" />
                     </button>
                   </div>

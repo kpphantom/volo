@@ -304,45 +304,57 @@ export function DocsPage() {
                 className="text-[var(--text-primary)] whitespace-pre-wrap"
                 style={{ fontFamily: 'inherit' }}
               >
-                {currentItem.content.split('\n').map((line, i) => {
-                  if (line.startsWith('# '))
-                    return (
-                      <h1 key={i} className="text-2xl font-bold mb-4 mt-6">
-                        {line.slice(2)}
-                      </h1>
-                    );
-                  if (line.startsWith('## '))
-                    return (
-                      <h2 key={i} className="text-xl font-semibold mb-3 mt-5">
-                        {line.slice(3)}
-                      </h2>
-                    );
-                  if (line.startsWith('### '))
-                    return (
-                      <h3 key={i} className="text-lg font-medium mb-2 mt-4">
-                        {line.slice(4)}
-                      </h3>
-                    );
-                  if (line.startsWith('```'))
-                    return null; // Simplified — code blocks need proper parsing
-                  if (line.startsWith('- '))
-                    return (
-                      <li key={i} className="text-sm text-[var(--text-secondary)] ml-4 mb-1">
-                        {line.slice(2)}
-                      </li>
-                    );
-                  if (line.startsWith('|'))
-                    return (
-                      <p key={i} className="text-sm font-mono text-[var(--text-secondary)]">
-                        {line}
-                      </p>
-                    );
-                  return (
-                    <p key={i} className="text-sm text-[var(--text-secondary)] mb-2">
-                      {line}
-                    </p>
-                  );
-                })}
+                {(() => {
+                  const lines = currentItem.content.split('\n');
+                  const elements: React.ReactNode[] = [];
+                  let inCodeBlock = false;
+                  let codeLines: string[] = [];
+                  let codeLang = '';
+                  
+                  lines.forEach((line, i) => {
+                    if (line.startsWith('```') && !inCodeBlock) {
+                      inCodeBlock = true;
+                      codeLang = line.slice(3).trim();
+                      codeLines = [];
+                      return;
+                    }
+                    if (line.startsWith('```') && inCodeBlock) {
+                      inCodeBlock = false;
+                      elements.push(
+                        <div key={`code-${i}`} className="my-3 rounded-xl overflow-hidden border border-white/5">
+                          {codeLang && (
+                            <div className="px-4 py-1.5 bg-white/5 text-[10px] text-zinc-500 font-mono uppercase tracking-wider border-b border-white/5">
+                              {codeLang}
+                            </div>
+                          )}
+                          <pre className="p-4 bg-surface-dark-0 overflow-x-auto">
+                            <code className="text-sm font-mono text-zinc-300 whitespace-pre">
+                              {codeLines.join('\n')}
+                            </code>
+                          </pre>
+                        </div>
+                      );
+                      return;
+                    }
+                    if (inCodeBlock) {
+                      codeLines.push(line);
+                      return;
+                    }
+                    if (line.startsWith('# '))
+                      elements.push(<h1 key={i} className="text-2xl font-bold mb-4 mt-6">{line.slice(2)}</h1>);
+                    else if (line.startsWith('## '))
+                      elements.push(<h2 key={i} className="text-xl font-semibold mb-3 mt-5">{line.slice(3)}</h2>);
+                    else if (line.startsWith('### '))
+                      elements.push(<h3 key={i} className="text-lg font-medium mb-2 mt-4">{line.slice(4)}</h3>);
+                    else if (line.startsWith('- '))
+                      elements.push(<li key={i} className="text-sm text-[var(--text-secondary)] ml-4 mb-1">{line.slice(2)}</li>);
+                    else if (line.startsWith('|'))
+                      elements.push(<p key={i} className="text-sm font-mono text-[var(--text-secondary)]">{line}</p>);
+                    else
+                      elements.push(<p key={i} className="text-sm text-[var(--text-secondary)] mb-2">{line}</p>);
+                  });
+                  return elements;
+                })()}
               </div>
             </div>
           ) : (

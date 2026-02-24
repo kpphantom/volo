@@ -378,9 +378,20 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const isLast = step === STEPS.length - 1;
   const isFirst = step === 0;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (isLast) {
       if (name) updateUser({ name });
+      // Save preferences to API
+      try {
+        const { api } = await import('@/lib/api');
+        await api.post('/api/user/preferences', {
+          name,
+          role,
+          interests: selectedInterests,
+        });
+      } catch {
+        // Non-blocking — preferences saved locally anyway
+      }
       completeOnboarding();
       onComplete();
       return;

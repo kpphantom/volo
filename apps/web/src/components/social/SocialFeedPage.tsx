@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface SocialPost {
   platform: string;
@@ -73,11 +75,10 @@ export function SocialFeedPage() {
   const fetchFeed = async (platform?: string) => {
     setLoading(true);
     try {
-      const endpoint = platform && platform !== 'all'
-        ? `http://localhost:8000/api/social/feed/${platform}`
-        : 'http://localhost:8000/api/social/feed';
-      const res = await fetch(endpoint);
-      const data = await res.json();
+      const path = platform && platform !== 'all'
+        ? `/api/social/feed/${platform}`
+        : '/api/social/feed';
+      const data = await api.get<{ posts: SocialPost[]; platforms: PlatformInfo[] }>(path);
       setPosts(data.posts || []);
       if (data.platforms) setPlatforms(data.platforms);
     } catch {
@@ -221,7 +222,7 @@ export function SocialFeedPage() {
                   </div>
                   <div className="flex items-center gap-1">
                     <PlatformIcon className={cn('w-4 h-4', platformColors[post.platform])} />
-                    <button className="p-1 rounded-lg hover:bg-white/10 text-zinc-500">
+                    <button onClick={() => { if (post.url) window.open(post.url, '_blank'); else toast.info('Open on platform to see options'); }} className="p-1 rounded-lg hover:bg-white/10 text-zinc-500" title="Open original">
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </div>
@@ -246,15 +247,15 @@ export function SocialFeedPage() {
                 {/* Actions */}
                 <div className="mt-3 flex items-center justify-between">
                   <div className="flex items-center gap-5">
-                    <button className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 transition-colors text-xs">
+                    <button onClick={() => { if (post.url) window.open(post.url, '_blank'); }} className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400 transition-colors text-xs" title="Like">
                       <Heart className="w-4 h-4" />
                       {post.likes > 0 && formatCount(post.likes)}
                     </button>
-                    <button className="flex items-center gap-1.5 text-zinc-500 hover:text-blue-400 transition-colors text-xs">
+                    <button onClick={() => { if (post.url) window.open(post.url, '_blank'); }} className="flex items-center gap-1.5 text-zinc-500 hover:text-blue-400 transition-colors text-xs" title="Comment">
                       <MessageCircle className="w-4 h-4" />
                       {post.comments > 0 && formatCount(post.comments)}
                     </button>
-                    <button className="flex items-center gap-1.5 text-zinc-500 hover:text-green-400 transition-colors text-xs">
+                    <button onClick={() => { if (navigator.share && post.url) { navigator.share({ title: post.author, url: post.url }).catch(() => {}); } else if (post.url) { navigator.clipboard.writeText(post.url); toast.success('Link copied!'); } }} className="flex items-center gap-1.5 text-zinc-500 hover:text-green-400 transition-colors text-xs" title="Share">
                       <Share2 className="w-4 h-4" />
                       {post.shares > 0 && formatCount(post.shares)}
                     </button>

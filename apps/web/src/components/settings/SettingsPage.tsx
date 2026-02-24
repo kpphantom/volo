@@ -22,8 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { api, API_URL } from '@/lib/api';
 
 type SettingsTab = 'api-keys' | 'integrations' | 'appearance' | 'accessibility' | 'notifications';
 
@@ -98,20 +97,11 @@ function ApiKeysSection() {
     if (!value.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/config/keys`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key_name: keyName, key_value: value }),
-      });
-      if (res.ok) {
-        toast.success(`${keyName} saved successfully`);
-        setTestResult((prev) => ({ ...prev, [keyName]: 'success' }));
-      } else {
-        toast.error(`Failed to save ${keyName}`);
-        setTestResult((prev) => ({ ...prev, [keyName]: 'error' }));
-      }
+      await api.post('/api/config/keys', { key_name: keyName, key_value: value });
+      toast.success(`${keyName} saved successfully`);
+      setTestResult((prev) => ({ ...prev, [keyName]: 'success' }));
     } catch {
-      toast.error('Cannot reach API server');
+      toast.error('Failed to save key — check API server');
       setTestResult((prev) => ({ ...prev, [keyName]: 'error' }));
     }
     setSaving(false);
@@ -119,16 +109,13 @@ function ApiKeysSection() {
 
   const testKey = async (keyName: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/config/test-key/${keyName}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.valid) {
-          toast.success(`${keyName} is valid!`);
-          setTestResult((prev) => ({ ...prev, [keyName]: 'success' }));
-        } else {
-          toast.error(`${keyName} is invalid: ${data.message || 'check the key'}`);
-          setTestResult((prev) => ({ ...prev, [keyName]: 'error' }));
-        }
+      const data = await api.get<{ valid: boolean; message?: string }>(`/api/config/test-key/${keyName}`);
+      if (data.valid) {
+        toast.success(`${keyName} is valid!`);
+        setTestResult((prev) => ({ ...prev, [keyName]: 'success' }));
+      } else {
+        toast.error(`${keyName} is invalid: ${data.message || 'check the key'}`);
+        setTestResult((prev) => ({ ...prev, [keyName]: 'error' }));
       }
     } catch {
       toast.error('Cannot reach API server');
@@ -311,7 +298,7 @@ function KeyInput({
 }
 
 function IntegrationsSection() {
-  const integrations = [
+  const [integrations, setIntegrations] = useState([
     {
       name: 'GitHub',
       icon: Github,
@@ -319,6 +306,7 @@ function IntegrationsSection() {
       description: 'Access repos, PRs, issues, CI/CD',
       connected: false,
       color: 'zinc',
+      keyName: 'GITHUB_TOKEN',
     },
     {
       name: 'Gmail',
@@ -327,6 +315,7 @@ function IntegrationsSection() {
       description: 'Email triage, auto-draft, inbox management',
       connected: false,
       color: 'red',
+      keyName: 'GOOGLE_OAUTH',
     },
     {
       name: 'Alpaca Trading',
@@ -335,6 +324,7 @@ function IntegrationsSection() {
       description: 'Stock trading, portfolio, market data',
       connected: false,
       color: 'emerald',
+      keyName: 'ALPACA_API_KEY',
     },
     {
       name: 'CoinGecko',
@@ -343,8 +333,37 @@ function IntegrationsSection() {
       description: 'Live crypto prices (no API key needed)',
       connected: true,
       color: 'amber',
+      keyName: '',
     },
-  ];
+  ]);
+
+  useEffect(() => {
+    api.get<{ github?: boolean; trading?: boolean; email?: boolean }>('/api/system/status')
+      .then((data) => {
+        setIntegrations((prev) =>
+          prev.map((int) => {
+            if (int.name === 'GitHub' && data.github) return { ...int, connected: true };
+            if (int.name === 'Alpaca Trading' && data.trading) return { ...int, connected: true };
+            if (int.name === 'Gmail' && data.email) return { ...int, connected: true };
+            return int;
+          })
+        );
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleConnect = (int: typeof integrations[0]) => {
+    if (int.name === 'Gmail') {
+      api.get<{ auth_url?: string }>('/api/google/auth-url')
+        .then((data) => {
+          if (data.auth_url) window.open(data.auth_url, '_blank', 'width=500,height=600');
+          else toast.info('Set up Google OAuth credentials in your .env first');
+        })
+        .catch(() => toast.error('Could not get Google auth URL'));
+    } else {
+      toast.info(`Add your ${int.keyName} in the API Keys tab to connect ${int.name}`);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -374,7 +393,10 @@ function IntegrationsSection() {
               {int.connected ? 'Connected' : 'Not Connected'}
             </span>
             {!int.connected && (
-              <button className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium transition-colors">
+              <button
+                onClick={() => handleConnect(int)}
+                className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium transition-colors"
+              >
                 Connect
               </button>
             )}
@@ -386,12 +408,34 @@ function IntegrationsSection() {
 }
 
 function AppearanceSection() {
+  const [activeTheme, setActiveTheme] = useState('midnight');
+  const [agentName, setAgentName] = useState('Volo');
+  const [savingName, setSavingName] = useState(false);
+
   const themes = [
-    { id: 'midnight', name: 'Midnight', colors: ['#09090b', '#4c6ef5', '#e4e4e7'], active: true },
-    { id: 'aurora', name: 'Aurora', colors: ['#0a0f0a', '#10b981', '#e4e4e7'], active: false },
-    { id: 'ember', name: 'Ember', colors: ['#0f0a08', '#f59e0b', '#e4e4e7'], active: false },
-    { id: 'ocean', name: 'Ocean', colors: ['#0a0f14', '#06b6d4', '#e4e4e7'], active: false },
+    { id: 'midnight', name: 'Midnight', colors: ['#09090b', '#4c6ef5', '#e4e4e7'] },
+    { id: 'aurora', name: 'Aurora', colors: ['#0a0f0a', '#10b981', '#e4e4e7'] },
+    { id: 'ember', name: 'Ember', colors: ['#0f0a08', '#f59e0b', '#e4e4e7'] },
+    { id: 'ocean', name: 'Ocean', colors: ['#0a0f14', '#06b6d4', '#e4e4e7'] },
   ];
+
+  const selectTheme = (id: string) => {
+    setActiveTheme(id);
+    document.documentElement.setAttribute('data-theme', id);
+    localStorage.setItem('volo-theme', id);
+    toast.success(`Theme changed to ${themes.find(t => t.id === id)?.name}`);
+  };
+
+  const saveAgentName = async () => {
+    setSavingName(true);
+    try {
+      await api.post('/api/config/agent-name', { name: agentName });
+      toast.success('Agent name updated');
+    } catch {
+      toast.error('Failed to save agent name');
+    }
+    setSavingName(false);
+  };
 
   return (
     <div className="space-y-6">
@@ -401,9 +445,10 @@ function AppearanceSection() {
           {themes.map((theme) => (
             <button
               key={theme.id}
+              onClick={() => selectTheme(theme.id)}
               className={cn(
                 'p-4 rounded-xl border transition-all text-center',
-                theme.active
+                activeTheme === theme.id
                   ? 'border-brand-500/50 bg-brand-500/5'
                   : 'border-white/5 hover:border-white/10 bg-surface-dark-0'
               )}
@@ -418,7 +463,7 @@ function AppearanceSection() {
                 ))}
               </div>
               <p className="text-xs text-zinc-300 font-medium">{theme.name}</p>
-              {theme.active && (
+              {activeTheme === theme.id && (
                 <p className="text-[9px] text-brand-400 mt-1">Active</p>
               )}
             </button>
@@ -428,11 +473,21 @@ function AppearanceSection() {
 
       <div className="rounded-2xl bg-surface-dark-2 border border-white/5 p-6">
         <h3 className="text-sm font-semibold text-zinc-200 mb-4">Agent Name</h3>
-        <input
-          type="text"
-          defaultValue="Volo"
-          className="w-full max-w-xs px-3 py-2.5 rounded-xl bg-surface-dark-0 border border-white/10 text-sm text-zinc-200 outline-none focus:border-brand-500/50 transition-colors"
-        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={agentName}
+            onChange={(e) => setAgentName(e.target.value)}
+            className="w-full max-w-xs px-3 py-2.5 rounded-xl bg-surface-dark-0 border border-white/10 text-sm text-zinc-200 outline-none focus:border-brand-500/50 transition-colors"
+          />
+          <button
+            onClick={saveAgentName}
+            disabled={savingName}
+            className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {savingName ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          </button>
+        </div>
         <p className="text-[10px] text-zinc-600 mt-2">
           Change the agent&apos;s display name (white-label support).
         </p>
@@ -574,8 +629,20 @@ function NotificationsSection() {
     soundEnabled: true,
   });
 
+  useEffect(() => {
+    const saved = localStorage.getItem('volo-notification-settings');
+    if (saved) {
+      try { setSettings(JSON.parse(saved)); } catch {}
+    }
+  }, []);
+
   const toggle = (key: keyof typeof settings) => {
-    setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+    setSettings((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem('volo-notification-settings', JSON.stringify(next));
+      api.post('/api/config/notifications', next).catch(() => {});
+      return next;
+    });
     toast.success('Setting updated');
   };
 

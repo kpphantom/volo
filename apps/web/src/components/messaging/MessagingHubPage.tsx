@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { api, API_URL } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface Message {
   platform: string;
@@ -54,10 +56,9 @@ export function MessagingHubPage() {
   const fetchMessages = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/messages');
-      const data = await res.json();
-      setMessages(data.messages || []);
-      setPlatforms(data.platforms || []);
+      const data = await api.get<{ messages: Message[]; platforms: PlatformInfo[] }>('/api/messages');
+      setMessages(data?.messages || []);
+      setPlatforms(data?.platforms || []);
     } catch {
       setMessages([]);
     } finally {
@@ -110,16 +111,14 @@ export function MessagingHubPage() {
     if (!replyText.trim() || !activeChatData) return;
     
     try {
-      await fetch('http://localhost:8000/api/messages/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          platform: activeChatData.platform,
-          to: activeChatData.lastMessage.chat_id,
-          text: replyText,
-        }),
+      await api.post('/api/messages/send', {
+        platform: activeChatData.platform,
+        to: activeChatData.lastMessage.chat_id,
+        text: replyText,
       });
-    } catch {}
+    } catch {
+      toast.error('Failed to send message');
+    }
     
     // Optimistic update
     const newMsg: Message = {
@@ -288,13 +287,13 @@ export function MessagingHubPage() {
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                <button className="p-2 rounded-lg hover:bg-white/10 text-zinc-400">
+                <button onClick={() => toast.info('Voice calls coming soon — use the native app for now')} className="p-2 rounded-lg hover:bg-white/10 text-zinc-400" title="Voice call">
                   <Phone className="w-4 h-4" />
                 </button>
-                <button className="p-2 rounded-lg hover:bg-white/10 text-zinc-400">
+                <button onClick={() => toast.info('Video calls coming soon — use the native app for now')} className="p-2 rounded-lg hover:bg-white/10 text-zinc-400" title="Video call">
                   <Video className="w-4 h-4" />
                 </button>
-                <button className="p-2 rounded-lg hover:bg-white/10 text-zinc-400">
+                <button onClick={() => toast.info('More options coming soon')} className="p-2 rounded-lg hover:bg-white/10 text-zinc-400" title="More options">
                   <MoreVertical className="w-4 h-4" />
                 </button>
               </div>
@@ -337,7 +336,7 @@ export function MessagingHubPage() {
             {/* Reply Bar */}
             <div className="px-4 py-3 border-t border-white/5 bg-surface-dark-1">
               <div className="flex items-center gap-2">
-                <button className="p-2 rounded-lg hover:bg-white/10 text-zinc-400">
+                <button onClick={() => toast.info('File attachments coming soon')} className="p-2 rounded-lg hover:bg-white/10 text-zinc-400" title="Attach file">
                   <Paperclip className="w-5 h-5" />
                 </button>
                 <input
@@ -348,7 +347,7 @@ export function MessagingHubPage() {
                   placeholder="Type a message..."
                   className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-brand-500/50"
                 />
-                <button className="p-2 rounded-lg hover:bg-white/10 text-zinc-400">
+                <button onClick={() => { setReplyText((prev) => prev + ' 😊'); }} className="p-2 rounded-lg hover:bg-white/10 text-zinc-400" title="Add emoji">
                   <Smile className="w-5 h-5" />
                 </button>
                 <button

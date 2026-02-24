@@ -5,6 +5,8 @@ import { Search, Command, PanelLeft, Bell, User, LogOut, Moon, Sun, Monitor, Set
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
+import { useNotificationStore } from '@/stores/notificationStore';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +37,7 @@ export function TopBar({ onToggleSidebar, onOpenCommandPalette }: TopBarProps) {
   const currentPage = useAppStore((s) => s.currentPage);
   const { user, logout } = useAuthStore();
   const { mode, setMode } = useThemeStore();
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -115,15 +118,7 @@ export function TopBar({ onToggleSidebar, onOpenCommandPalette }: TopBarProps) {
         </div>
 
         {/* Notifications */}
-        <Tooltip content="Notifications">
-          <button
-            className="relative p-2.5 rounded-lg hover:bg-white/5 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-            aria-label="Notifications"
-          >
-            <Bell className="w-4 h-4 text-zinc-400" />
-            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-brand-500" aria-label="New notifications" />
-          </button>
-        </Tooltip>
+        <NotificationCenter />
 
         {/* User Menu */}
         <div className="relative" ref={menuRef}>

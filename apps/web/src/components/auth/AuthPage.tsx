@@ -16,8 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { api, API_URL } from '@/lib/api';
 
 /* ─── Social provider config ─── */
 const socialProviders = [
@@ -148,18 +147,7 @@ export function AuthPage() {
         ? { email, password, name }
         : { email, password };
 
-      const res = await fetch(`${API_URL}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Something went wrong' }));
-        throw new Error(err.detail || 'Authentication failed');
-      }
-
-      const data = await res.json();
+      const data = await api.post<{ user_id?: string; id?: string; access_token?: string }>(endpoint, body);
       login(
         {
           id: data.user_id || data.id || email,
@@ -184,25 +172,22 @@ export function AuthPage() {
     try {
       // Try real OAuth redirect for supported providers
       if (providerId === 'google') {
-        const res = await fetch(`${API_URL}/api/google/auth-url`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.url && data.url.startsWith('http')) {
-            window.location.href = data.url;
-            return;
-          }
+        const data = await api.get<{ url?: string; auth_url?: string }>('/api/google/auth-url');
+        const authUrl = data?.url || data?.auth_url;
+        if (authUrl && authUrl.startsWith('http')) {
+          window.location.href = authUrl;
+          return;
         }
       }
 
       if (providerId === 'twitter') {
-        const res = await fetch(`${API_URL}/api/auth/twitter`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.url && data.url.startsWith('http')) {
+        try {
+          const data = await api.get<{ url?: string }>('/api/auth/twitter');
+          if (data?.url && data.url.startsWith('http')) {
             window.location.href = data.url;
             return;
           }
-        }
+        } catch {}
       }
 
       // Demo login for providers not yet configured
@@ -445,7 +430,7 @@ export function AuthPage() {
 
             {mode === 'login' && (
               <div className="text-right">
-                <button type="button" className="text-xs text-brand-400 hover:text-brand-300 transition-colors">
+                <button type="button" onClick={() => { if (!email) { toast.error('Enter your email first'); return; } api.post('/api/auth/forgot-password', { email }).then(() => toast.success('Password reset email sent!')).catch(() => toast.info('Password reset is not configured yet')); }} className="text-xs text-brand-400 hover:text-brand-300 transition-colors">
                   Forgot password?
                 </button>
               </div>

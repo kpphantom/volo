@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import {
   Brain,
   Code,
@@ -10,6 +11,7 @@ import {
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
+import { api } from '@/lib/api';
 
 interface WelcomeScreenProps {
   onSuggestionClick: (text: string) => void;
@@ -55,6 +57,27 @@ const suggestions = [
 ];
 
 export function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
+  const [status, setStatus] = useState({ apiOnline: false, integrations: 0, memories: 0 });
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const [healthRes, systemRes] = await Promise.allSettled([
+          api.get('/health'),
+          api.get<{ integrations_count?: number; memories_count?: number }>('/api/system/status'),
+        ]);
+        setStatus({
+          apiOnline: healthRes.status === 'fulfilled',
+          integrations: systemRes.status === 'fulfilled' ? (systemRes.value as { integrations_count?: number }).integrations_count || 0 : 0,
+          memories: systemRes.status === 'fulfilled' ? (systemRes.value as { memories_count?: number }).memories_count || 0 : 0,
+        });
+      } catch {
+        setStatus({ apiOnline: false, integrations: 0, memories: 0 });
+      }
+    };
+    fetchStatus();
+  }, []);
+
   return (
     <div className="flex flex-col items-center justify-center min-h-full px-4 py-12">
       {/* Logo & Welcome */}
@@ -98,16 +121,16 @@ export function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
       {/* Status indicators */}
       <div className="flex items-center gap-6 mt-10 text-[10px] text-zinc-600">
         <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          Agent Online
+          <span className={`w-1.5 h-1.5 rounded-full ${status.apiOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
+          {status.apiOnline ? 'Agent Online' : 'Agent Offline'}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
-          0 Integrations
+          <span className={`w-1.5 h-1.5 rounded-full ${status.integrations > 0 ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
+          {status.integrations} Integration{status.integrations !== 1 ? 's' : ''}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
-          Memory Empty
+          <span className={`w-1.5 h-1.5 rounded-full ${status.memories > 0 ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
+          {status.memories > 0 ? `${status.memories} Memories` : 'Memory Empty'}
         </div>
       </div>
     </div>

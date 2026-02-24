@@ -111,7 +111,15 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       icon: Moon,
       label: 'Toggle dark mode',
       category: 'Appearance',
-      action: () => toast.info('Already in dark mode — light mode coming soon!'),
+      action: () => {
+        import('@/stores/themeStore').then(({ useThemeStore }) => {
+          const current = useThemeStore.getState().mode;
+          const next = current === 'dark' ? 'light' : 'dark';
+          useThemeStore.getState().setMode(next);
+          document.documentElement.classList.toggle('dark', next === 'dark');
+          toast.success(`Switched to ${next} mode`);
+        });
+      },
     },
   ];
 

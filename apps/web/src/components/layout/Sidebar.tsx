@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   MessageSquare,
   Plus,
@@ -29,10 +29,18 @@ import {
   Heart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
 import { useChatStore } from '@/stores/chatStore';
 import { useAppStore, type Page } from '@/stores/appStore';
 
-const integrations = [
+interface IntegrationInfo {
+  id: string;
+  name: string;
+  icon: typeof Code;
+  connected: boolean;
+}
+
+const defaultIntegrations: IntegrationInfo[] = [
   { id: 'github', name: 'GitHub', icon: Code, connected: false },
   { id: 'email', name: 'Email', icon: Mail, connected: false },
   { id: 'trading', name: 'Trading', icon: TrendingUp, connected: false },
@@ -42,8 +50,29 @@ const integrations = [
 
 export function Sidebar() {
   const [activeTab, setActiveTab] = useState<'chats' | 'integrations'>('chats');
+  const [integrations, setIntegrations] = useState<IntegrationInfo[]>(defaultIntegrations);
   const { messages, clearMessages } = useChatStore();
   const { sidebarOpen, currentPage, setPage, toggleSidebar } = useAppStore();
+
+  // Fetch real integration status
+  useEffect(() => {
+    const fetchIntegrations = async () => {
+      try {
+        const data = await api.get<{ integrations_count?: number; github?: boolean; email?: boolean; trading?: boolean }>('/api/system/status');
+        setIntegrations((prev) =>
+          prev.map((int) => {
+            if (int.id === 'github' && data.github) return { ...int, connected: true };
+            if (int.id === 'trading' && data.trading) return { ...int, connected: true };
+            if (int.id === 'email' && data.email) return { ...int, connected: true };
+            return int;
+          })
+        );
+      } catch {
+        // Keep defaults
+      }
+    };
+    fetchIntegrations();
+  }, []);
 
   // Derive conversation info from current messages
   const hasConversation = messages.length > 0;
@@ -174,6 +203,7 @@ export function Sidebar() {
             {integrations.map((integration) => (
               <button
                 key={integration.id}
+                onClick={() => setPage('settings')}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left transition-colors group"
               >
                 <integration.icon className="w-4 h-4 text-zinc-500 group-hover:text-brand-400 transition-colors" />
