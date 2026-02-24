@@ -1,20 +1,22 @@
 """
 VOLO — Conversations Routes
-Persistent conversation management: list, get, branch, delete.
+Persistent conversation management backed by PostgreSQL.
 """
 
 import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select, func, delete as sa_delete
+from sqlalchemy.orm import selectinload
+
+from app.database import async_session, Conversation, ChatMessage
 
 router = APIRouter()
 
-# In-memory conversation store (swap for DB in production)
-_conversations: dict[str, dict] = {}
-_messages: dict[str, list[dict]] = {}
+DEFAULT_USER = "dev-user"
 
 
 class CreateConversationRequest(BaseModel):
@@ -26,6 +28,28 @@ class BranchConversationRequest(BaseModel):
     title: Optional[str] = None
 
 
+def _conv_dict(c, preview=""):
+    return {
+        "id": c.id,
+        "title": c.title,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+        "message_count": c.message_count or 0,
+        "preview": preview,
+        "pinned": c.pinned or False,
+    }
+
+
+def _msg_dict(m):
+    return {
+        "id": m.id,
+        "role": m.role,
+        "content": m.content,
+        "timestamp": m.created_at.isoformat() if m.created_at else None,
+        "tool_calls": m.tool_calls,
+    }
+
+
 @router.get("/conversations")
 async def list_conversations(
     limit: int = Query(50, ge=1, le=200),
@@ -33,160 +57,207 @@ async def list_conversations(
     search: Optional[str] = None,
 ):
     """List all conversations, optionally filtered by search."""
-    convos = list(_conversations.values())
+    async with async_session() as session:
+        query = select(Conversation).where(Conversation.user_id == DEFAULT_USER)
 
-    if search:
-        search_lower = search.lower()
-        convos = [
-            c for c in convos
-            if search_lower in c.get("title", "").lower()
-            or any(search_lower in m.get("content", "").lower() for m in _messages.get(c["id"], []))
-        ]
+        if search:
+            query = query.where(Conversation.title.ilike(f"%{search}%"))
 
-    convos.sort(key=lambda c: c.get("updated_at", ""), reverse=True)
-    total = len(convos)
-    convos = convos[offset: offset + limit]
+        count_q = select(func.count()).select_from(query.subquery())
+        total = (await session.execute(count_q)).scalar() or 0
 
-    return {"conversations": convos, "total": total, "limit": limit, "offset": offset}
+        query = query.order_by(Conversation.updated_at.desc()).offset(offset).limit(limit)
+        result = await session.execute(query)
+        convos = result.scalars().all()
+
+        conv_list = []
+        for c in convos:
+            last_msg_q = (
+                select(ChatMessage.content)
+                .where(ChatMessage.conversation_id == c.id)
+                .order_by(ChatMessage.created_at.desc())
+                .limit(1)
+            )
+            last_msg = (await session.execute(last_msg_q)).scalar()
+            conv_list.append(_conv_dict(c, preview=(last_msg or "")[:100]))
+
+    return {"conversations": conv_list, "total": total, "limit": limit, "offset": offset}
 
 
 @router.post("/conversations")
 async def create_conversation(body: CreateConversationRequest):
     """Create a new conversation."""
-    conv_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
-    conv = {
-        "id": conv_id,
-        "title": body.title or "New Conversation",
-        "created_at": now,
-        "updated_at": now,
-        "message_count": 0,
-        "preview": "",
-    }
-    _conversations[conv_id] = conv
-    _messages[conv_id] = []
-    return conv
+    async with async_session() as session:
+        conv = Conversation(
+            user_id=DEFAULT_USER,
+            title=body.title or "New Conversation",
+        )
+        session.add(conv)
+        await session.commit()
+        await session.refresh(conv)
+        return _conv_dict(conv)
 
 
 @router.get("/conversations/{conversation_id}")
 async def get_conversation(conversation_id: str):
     """Get a conversation with its messages."""
-    conv = _conversations.get(conversation_id)
-    if not conv:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    async with async_session() as session:
+        result = await session.execute(
+            select(Conversation)
+            .options(selectinload(Conversation.messages))
+            .where(Conversation.id == conversation_id)
+        )
+        conv = result.scalar_one_or_none()
 
-    return {
-        **conv,
-        "messages": _messages.get(conversation_id, []),
-    }
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        return {
+            **_conv_dict(conv),
+            "messages": [_msg_dict(m) for m in conv.messages],
+        }
 
 
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: str):
-    """Delete a conversation."""
-    if conversation_id in _conversations:
-        del _conversations[conversation_id]
-        _messages.pop(conversation_id, None)
-        return {"deleted": True}
+    """Delete a conversation and its messages."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(Conversation).where(Conversation.id == conversation_id)
+        )
+        conv = result.scalar_one_or_none()
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
-    from fastapi import HTTPException
-    raise HTTPException(status_code=404, detail="Conversation not found")
+        await session.execute(
+            sa_delete(ChatMessage).where(ChatMessage.conversation_id == conversation_id)
+        )
+        await session.delete(conv)
+        await session.commit()
+
+    return {"deleted": True}
 
 
 @router.patch("/conversations/{conversation_id}")
 async def update_conversation(conversation_id: str, body: CreateConversationRequest):
     """Update conversation title."""
-    conv = _conversations.get(conversation_id)
-    if not conv:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    async with async_session() as session:
+        result = await session.execute(
+            select(Conversation).where(Conversation.id == conversation_id)
+        )
+        conv = result.scalar_one_or_none()
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
-    if body.title:
-        conv["title"] = body.title
-    conv["updated_at"] = datetime.utcnow().isoformat()
-    return conv
+        if body.title:
+            conv.title = body.title
+        conv.updated_at = datetime.utcnow()
+        await session.commit()
+        await session.refresh(conv)
+
+        return _conv_dict(conv)
 
 
 @router.post("/conversations/{conversation_id}/messages")
 async def add_message(conversation_id: str, request: dict):
     """Add a message to a conversation (used internally by chat)."""
-    conv = _conversations.get(conversation_id)
-    if not conv:
-        # Auto-create conversation
-        now = datetime.utcnow().isoformat()
-        conv = {
-            "id": conversation_id,
-            "title": request.get("content", "")[:50] or "New Conversation",
-            "created_at": now,
-            "updated_at": now,
-            "message_count": 0,
-            "preview": "",
-        }
-        _conversations[conversation_id] = conv
-        _messages[conversation_id] = []
+    async with async_session() as session:
+        result = await session.execute(
+            select(Conversation).where(Conversation.id == conversation_id)
+        )
+        conv = result.scalar_one_or_none()
 
-    msg = {
-        "id": str(uuid.uuid4()),
-        "role": request.get("role", "user"),
-        "content": request.get("content", ""),
-        "timestamp": datetime.utcnow().isoformat(),
-        "tool_calls": request.get("tool_calls"),
-    }
-    _messages[conversation_id].append(msg)
-    conv["message_count"] = len(_messages[conversation_id])
-    conv["updated_at"] = msg["timestamp"]
-    conv["preview"] = msg["content"][:100]
-    return msg
+        if not conv:
+            conv = Conversation(
+                id=conversation_id,
+                user_id=DEFAULT_USER,
+                title=request.get("content", "")[:50] or "New Conversation",
+            )
+            session.add(conv)
+            await session.flush()
+
+        msg = ChatMessage(
+            conversation_id=conversation_id,
+            role=request.get("role", "user"),
+            content=request.get("content", ""),
+            tool_calls=request.get("tool_calls"),
+        )
+        session.add(msg)
+
+        conv.message_count = (conv.message_count or 0) + 1
+        conv.updated_at = datetime.utcnow()
+        await session.commit()
+        await session.refresh(msg)
+
+        return _msg_dict(msg)
 
 
 @router.post("/conversations/{conversation_id}/branch")
 async def branch_conversation(conversation_id: str, body: BranchConversationRequest):
     """Branch a conversation from a specific message."""
-    if conversation_id not in _conversations:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    async with async_session() as session:
+        result = await session.execute(
+            select(Conversation)
+            .options(selectinload(Conversation.messages))
+            .where(Conversation.id == conversation_id)
+        )
+        conv = result.scalar_one_or_none()
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
-    original_msgs = _messages.get(conversation_id, [])
-    if body.from_message_index > len(original_msgs):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail="Invalid message index")
+        original_msgs = sorted(conv.messages, key=lambda m: m.created_at)
+        if body.from_message_index > len(original_msgs):
+            raise HTTPException(status_code=400, detail="Invalid message index")
 
-    # Create new conversation with messages up to the branch point
-    new_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
-    branched_msgs = [dict(m) for m in original_msgs[: body.from_message_index]]
+        new_conv = Conversation(
+            user_id=DEFAULT_USER,
+            title=body.title or f"Branch of {conv.title}",
+            message_count=body.from_message_index,
+        )
+        session.add(new_conv)
+        await session.flush()
 
-    new_conv = {
-        "id": new_id,
-        "title": body.title or f"Branch of {_conversations[conversation_id]['title']}",
-        "created_at": now,
-        "updated_at": now,
-        "message_count": len(branched_msgs),
-        "preview": branched_msgs[-1]["content"][:100] if branched_msgs else "",
-        "branched_from": conversation_id,
-    }
-    _conversations[new_id] = new_conv
-    _messages[new_id] = branched_msgs
-    return new_conv
+        for m in original_msgs[:body.from_message_index]:
+            session.add(ChatMessage(
+                conversation_id=new_conv.id,
+                role=m.role,
+                content=m.content,
+                tool_calls=m.tool_calls,
+                metadata_=m.metadata_,
+            ))
+
+        await session.commit()
+        await session.refresh(new_conv)
+
+        return {**_conv_dict(new_conv), "branched_from": conversation_id}
 
 
 @router.get("/conversations/{conversation_id}/export")
 async def export_conversation(conversation_id: str, format: str = "json"):
     """Export a conversation as JSON or Markdown."""
-    conv = _conversations.get(conversation_id)
-    if not conv:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    async with async_session() as session:
+        result = await session.execute(
+            select(Conversation)
+            .options(selectinload(Conversation.messages))
+            .where(Conversation.id == conversation_id)
+        )
+        conv = result.scalar_one_or_none()
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
-    msgs = _messages.get(conversation_id, [])
+        msgs = [_msg_dict(m) for m in sorted(conv.messages, key=lambda m: m.created_at)]
+        conv_dict = {
+            "id": conv.id,
+            "title": conv.title,
+            "created_at": conv.created_at.isoformat(),
+        }
 
-    if format == "markdown":
-        lines = [f"# {conv['title']}", f"*{conv['created_at']}*", ""]
-        for m in msgs:
-            role = "**You**" if m["role"] == "user" else "**Volo**"
-            lines.append(f"{role}: {m['content']}")
-            lines.append("")
-        return {"format": "markdown", "content": "\n".join(lines)}
+        if format == "markdown":
+            lines = [f"# {conv.title}", f"*{conv.created_at.isoformat()}*", ""]
+            for m in msgs:
+                role = "**You**" if m["role"] == "user" else "**Volo**"
+                lines.append(f"{role}: {m['content']}")
+                lines.append("")
+            return {"format": "markdown", "content": "\n".join(lines)}
 
-    return {"format": "json", "conversation": conv, "messages": msgs}
+        return {"format": "json", "conversation": conv_dict, "messages": msgs}

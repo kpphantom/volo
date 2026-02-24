@@ -180,6 +180,19 @@ class ApprovalRequest(Base):
     resolved_at = Column(DateTime, nullable=True)
 
 
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    type = Column(String(50), nullable=False)
+    title = Column(String(255), nullable=False)
+    body = Column(Text, default="")
+    data = Column(JSON, default=dict)
+    read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ---- Engine & Session ----
 
 engine = create_async_engine(settings.database_url, echo=False)
@@ -196,10 +209,41 @@ async def get_db():
 
 
 async def init_db():
-    """Create all tables."""
+    """Create all tables and seed default data."""
     try:
+        from sqlalchemy import select as sa_select
+
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        print("✅ Database tables created")
+
+        # Seed default tenant + dev user so FK constraints work
+        async with async_session() as session:
+            result = await session.execute(
+                sa_select(Tenant).where(Tenant.id == "volo-default")
+            )
+            if not result.scalar_one_or_none():
+                session.add(Tenant(
+                    id="volo-default",
+                    name="Volo",
+                    slug="volo",
+                    plan="pro",
+                ))
+                await session.flush()
+
+            result = await session.execute(
+                sa_select(User).where(User.id == "dev-user")
+            )
+            if not result.scalar_one_or_none():
+                session.add(User(
+                    id="dev-user",
+                    tenant_id="volo-default",
+                    email="dev@volo.ai",
+                    name="Developer",
+                    role="owner",
+                ))
+
+            await session.commit()
+
+        print("✅ Database tables created & seeded")
     except Exception as e:
-        print(f"⚠️  Database init skipped (will work without DB for now): {e}")
+        print(f"⚠️  Database init: {e}")

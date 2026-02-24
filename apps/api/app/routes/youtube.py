@@ -8,10 +8,9 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.services.youtube import YouTubeService
-from app.services.google_auth import GoogleAuthService
+from app.services.google_auth import google_auth
 
 router = APIRouter()
-google_auth = GoogleAuthService()
 
 
 class SummarizeRequest(BaseModel):

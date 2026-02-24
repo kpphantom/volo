@@ -1,54 +1,47 @@
 """
 VOLO — Google OAuth & Services Discovery
-Handles Google sign-in, token exchange, and auto-discovery of user's Google services.
+DB-backed token storage with in-memory cache for fast sync access.
 """
 
 import os
 import httpx
 from typing import Optional
 from datetime import datetime, timezone
+from sqlalchemy import select
 
+from app.database import async_session, Integration, User
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:3000/auth/google/callback")
 
-# All Google scopes we request
 GOOGLE_SCOPES = [
     "openid",
     "email",
     "profile",
-    # Gmail
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
-    # Calendar
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/calendar.events",
-    # Drive
     "https://www.googleapis.com/auth/drive.readonly",
-    # YouTube
     "https://www.googleapis.com/auth/youtube.readonly",
-    # Contacts
     "https://www.googleapis.com/auth/contacts.readonly",
-    # Fitness
     "https://www.googleapis.com/auth/fitness.activity.read",
     "https://www.googleapis.com/auth/fitness.heart_rate.read",
     "https://www.googleapis.com/auth/fitness.sleep.read",
     "https://www.googleapis.com/auth/fitness.body.read",
-    # Photos
     "https://www.googleapis.com/auth/photoslibrary.readonly",
-    # Tasks
     "https://www.googleapis.com/auth/tasks.readonly",
-    # Keep (Notes)
     "https://www.googleapis.com/auth/keep.readonly",
 ]
 
-# In-memory token store (swap for DB in production)
-_user_tokens: dict[str, dict] = {}
-
 
 class GoogleAuthService:
-    """Handles Google OAuth2 flow and service discovery."""
+    """Handles Google OAuth2 flow with DB-backed persistent token storage."""
+
+    def __init__(self):
+        # In-memory cache backed by DB — fast sync access, persistent storage
+        self._cache: dict[str, dict] = {}
 
     def get_auth_url(self, state: str = "volo") -> str:
         """Generate Google OAuth consent URL."""
@@ -64,7 +57,7 @@ class GoogleAuthService:
             f"&prompt=consent"
         )
 
-    async def exchange_code(self, code: str) -> dict:
+    async def exchange_code(self, code: str, user_id: str = "dev-user") -> dict:
         """Exchange authorization code for tokens."""
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -79,15 +72,24 @@ class GoogleAuthService:
             )
             tokens = resp.json()
 
-        # Get user profile
         profile = await self._get_profile(tokens.get("access_token", ""))
+        google_sub = profile.get("sub", profile.get("id", user_id))
 
-        user_id = profile.get("sub", profile.get("id", "unknown"))
-        _user_tokens[user_id] = {
-            **tokens,
-            "profile": profile,
-            "connected_at": datetime.now(timezone.utc).isoformat(),
-        }
+        # Ensure user exists for FK constraint
+        async with async_session() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            if not result.scalar_one_or_none():
+                session.add(User(
+                    id=user_id,
+                    tenant_id="volo-default",
+                    email=profile.get("email", f"{google_sub}@google.com"),
+                    name=profile.get("name", "Google User"),
+                    avatar_url=profile.get("picture"),
+                    role="owner",
+                ))
+                await session.commit()
+
+        await self._save_tokens(user_id, tokens, profile)
 
         return {
             "user_id": user_id,
@@ -96,7 +98,6 @@ class GoogleAuthService:
         }
 
     async def _get_profile(self, access_token: str) -> dict:
-        """Get Google user profile."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 "https://www.googleapis.com/oauth2/v2/userinfo",
@@ -106,8 +107,64 @@ class GoogleAuthService:
                 return resp.json()
         return {}
 
+    async def _save_tokens(self, user_id: str, tokens: dict, profile: dict):
+        """Persist Google tokens to DB and update cache."""
+        config = {
+            "access_token": tokens.get("access_token"),
+            "refresh_token": tokens.get("refresh_token"),
+            "token_type": tokens.get("token_type"),
+            "expires_in": tokens.get("expires_in"),
+            "profile": profile,
+            "connected_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        async with async_session() as session:
+            result = await session.execute(
+                select(Integration).where(
+                    Integration.user_id == user_id,
+                    Integration.type == "google",
+                )
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                if not config.get("refresh_token") and existing.config:
+                    config["refresh_token"] = existing.config.get("refresh_token")
+                existing.config = config
+                existing.status = "connected"
+                existing.last_sync_at = datetime.utcnow()
+            else:
+                session.add(Integration(
+                    user_id=user_id,
+                    type="google",
+                    category="auth",
+                    name="Google",
+                    status="connected",
+                    config=config,
+                ))
+            await session.commit()
+
+        self._cache[user_id] = config
+
+    async def _load_tokens(self, user_id: str) -> Optional[dict]:
+        """Load from cache, falling back to DB."""
+        if user_id in self._cache:
+            return self._cache[user_id]
+
+        async with async_session() as session:
+            result = await session.execute(
+                select(Integration).where(
+                    Integration.user_id == user_id,
+                    Integration.type == "google",
+                )
+            )
+            integration = result.scalar_one_or_none()
+            if integration and integration.config:
+                self._cache[user_id] = integration.config
+                return integration.config
+        return None
+
     async def discover_services(self, access_token: str) -> list[dict]:
-        """Auto-discover which Google services the user has data in."""
         services = []
         headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -127,26 +184,21 @@ class GoogleAuthService:
                 try:
                     resp = await client.get(url, headers=headers)
                     services.append({
-                        "id": svc_id,
-                        "name": name,
-                        "icon": icon,
+                        "id": svc_id, "name": name, "icon": icon,
                         "connected": resp.status_code == 200,
                         "status": "active" if resp.status_code == 200 else "needs_permission",
                     })
                 except Exception:
                     services.append({
-                        "id": svc_id,
-                        "name": name,
-                        "icon": icon,
-                        "connected": False,
-                        "status": "error",
+                        "id": svc_id, "name": name, "icon": icon,
+                        "connected": False, "status": "error",
                     })
 
         return services
 
     async def refresh_token(self, user_id: str) -> Optional[str]:
         """Refresh an expired access token."""
-        token_data = _user_tokens.get(user_id)
+        token_data = await self._load_tokens(user_id)
         if not token_data or "refresh_token" not in token_data:
             return None
 
@@ -163,16 +215,35 @@ class GoogleAuthService:
             new_tokens = resp.json()
 
         if "access_token" in new_tokens:
-            _user_tokens[user_id].update(new_tokens)
+            profile = token_data.get("profile", {})
+            await self._save_tokens(user_id, {**token_data, **new_tokens}, profile)
             return new_tokens["access_token"]
         return None
 
     def get_access_token(self, user_id: str) -> Optional[str]:
-        """Get stored access token for a user."""
-        token_data = _user_tokens.get(user_id)
-        return token_data.get("access_token") if token_data else None
+        """Sync access to cached token (called from sync contexts like youtube.py)."""
+        cached = self._cache.get(user_id)
+        return cached.get("access_token") if cached else None
 
     def get_user_profile(self, user_id: str) -> Optional[dict]:
-        """Get stored user profile."""
-        token_data = _user_tokens.get(user_id)
-        return token_data.get("profile") if token_data else None
+        """Sync access to cached profile."""
+        cached = self._cache.get(user_id)
+        return cached.get("profile") if cached else None
+
+    async def load_from_db(self):
+        """Load all Google integrations into cache on startup."""
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Integration).where(Integration.type == "google")
+                )
+                for integration in result.scalars().all():
+                    if integration.config:
+                        self._cache[integration.user_id] = integration.config
+            print(f"  Google tokens loaded: {len(self._cache)} users")
+        except Exception as e:
+            print(f"  Google token load skipped: {e}")
+
+
+# Module-level singleton — import this, not GoogleAuthService()
+google_auth = GoogleAuthService()

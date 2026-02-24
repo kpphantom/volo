@@ -34,6 +34,7 @@ from app.routes import remote as remote_routes
 from app.database import init_db
 from app.middleware import RateLimitMiddleware, RequestLogMiddleware
 from app.services.cache import cache
+from app.services.remote_agent import remote_manager
 
 
 @asynccontextmanager
@@ -44,6 +45,14 @@ async def lifespan(app: FastAPI):
     print("✅ Database initialized")
     await cache.connect()
     print("✅ Cache connected")
+
+    # Load persistent data into in-memory caches
+    from app.services.google_auth import google_auth
+    await google_auth.load_from_db()
+    print("✅ Google tokens loaded")
+    await remote_manager.load_keys_from_db()
+    print("✅ Agent keys loaded")
+
     print("🧠 Agent orchestrator ready")
     yield
     print("👋 Volo API shutting down...")

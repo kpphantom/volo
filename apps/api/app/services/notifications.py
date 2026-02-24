@@ -1,22 +1,20 @@
 """
 VOLO — Notification Service
-In-app notifications, push notifications, email alerts.
+Persistent notification storage in PostgreSQL.
 """
 
-import uuid
 import logging
 from datetime import datetime
 from typing import Optional
+from sqlalchemy import select, func
+
+from app.database import async_session, Notification
 
 logger = logging.getLogger("volo.notifications")
 
 
 class NotificationService:
-    """Manages notifications across channels."""
-
-    def __init__(self):
-        # In-memory store (DB in production)
-        self._notifications: list[dict] = []
+    """Manages notifications with DB persistence."""
 
     async def create(
         self,
@@ -26,18 +24,19 @@ class NotificationService:
         body: str = "",
         data: dict = None,
     ) -> dict:
-        notification = {
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "type": type,
-            "title": title,
-            "body": body,
-            "data": data or {},
-            "read": False,
-            "created_at": datetime.utcnow().isoformat(),
-        }
-        self._notifications.append(notification)
-        return notification
+        async with async_session() as session:
+            notif = Notification(
+                user_id=user_id,
+                type=type,
+                title=title,
+                body=body or "",
+                data=data or {},
+            )
+            session.add(notif)
+            await session.commit()
+            await session.refresh(notif)
+
+            return self._to_dict(notif)
 
     async def list_notifications(
         self,
@@ -45,36 +44,79 @@ class NotificationService:
         unread_only: bool = False,
         limit: int = 50,
     ) -> list[dict]:
-        results = [n for n in self._notifications if n["user_id"] == user_id]
-        if unread_only:
-            results = [n for n in results if not n["read"]]
-        return list(reversed(results))[:limit]
+        async with async_session() as session:
+            q = select(Notification).where(Notification.user_id == user_id)
+            if unread_only:
+                q = q.where(Notification.read == False)
+            q = q.order_by(Notification.created_at.desc()).limit(limit)
+
+            result = await session.execute(q)
+            return [self._to_dict(n) for n in result.scalars().all()]
 
     async def mark_read(self, notification_id: str) -> bool:
-        for n in self._notifications:
-            if n["id"] == notification_id:
-                n["read"] = True
+        async with async_session() as session:
+            result = await session.execute(
+                select(Notification).where(Notification.id == notification_id)
+            )
+            n = result.scalar_one_or_none()
+            if n:
+                n.read = True
+                await session.commit()
                 return True
         return False
 
     async def mark_all_read(self, user_id: str) -> int:
-        count = 0
-        for n in self._notifications:
-            if n["user_id"] == user_id and not n["read"]:
-                n["read"] = True
+        async with async_session() as session:
+            result = await session.execute(
+                select(Notification).where(
+                    Notification.user_id == user_id,
+                    Notification.read == False,
+                )
+            )
+            notifications = result.scalars().all()
+            count = 0
+            for n in notifications:
+                n.read = True
                 count += 1
-        return count
+            await session.commit()
+            return count
 
     async def delete(self, notification_id: str) -> bool:
-        before = len(self._notifications)
-        self._notifications = [n for n in self._notifications if n["id"] != notification_id]
-        return len(self._notifications) < before
+        async with async_session() as session:
+            result = await session.execute(
+                select(Notification).where(Notification.id == notification_id)
+            )
+            n = result.scalar_one_or_none()
+            if n:
+                await session.delete(n)
+                await session.commit()
+                return True
+        return False
 
     async def get_unread_count(self, user_id: str) -> int:
-        return sum(
-            1 for n in self._notifications
-            if n["user_id"] == user_id and not n["read"]
-        )
+        async with async_session() as session:
+            result = await session.execute(
+                select(func.count()).select_from(
+                    select(Notification).where(
+                        Notification.user_id == user_id,
+                        Notification.read == False,
+                    ).subquery()
+                )
+            )
+            return result.scalar() or 0
+
+    @staticmethod
+    def _to_dict(n) -> dict:
+        return {
+            "id": n.id,
+            "user_id": n.user_id,
+            "type": n.type,
+            "title": n.title,
+            "body": n.body,
+            "data": n.data,
+            "read": n.read,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        }
 
 
 # Singleton

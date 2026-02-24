@@ -12,6 +12,9 @@ import json
 import time
 from typing import Optional
 from datetime import datetime
+from sqlalchemy import select
+
+from app.database import async_session, Integration
 
 
 class AgentConnection:
@@ -100,11 +103,63 @@ class RemoteAgentManager:
             "created_at": datetime.utcnow().isoformat(),
         }
         self.user_agents[user_id] = key
+        # Fire-and-forget DB save
+        asyncio.ensure_future(self._save_key_to_db(user_id, key, github_username))
         return key
 
     def get_agent_key(self, user_id: str) -> Optional[str]:
         info = self.agent_keys.get(user_id)
         return info["key"] if info else None
+
+    async def _save_key_to_db(self, user_id: str, key: str, github_username: str = ""):
+        """Persist agent key to Integration table."""
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Integration).where(
+                        Integration.user_id == user_id,
+                        Integration.type == "desktop_agent",
+                    )
+                )
+                existing = result.scalar_one_or_none()
+
+                config = {
+                    "key": key,
+                    "github_username": github_username,
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+
+                if existing:
+                    existing.config = config
+                    existing.status = "connected"
+                else:
+                    session.add(Integration(
+                        user_id=user_id,
+                        type="desktop_agent",
+                        category="system",
+                        name="Desktop Agent",
+                        status="connected",
+                        config=config,
+                    ))
+                await session.commit()
+        except Exception as e:
+            print(f"  Warning: failed to persist agent key: {e}")
+
+    async def load_keys_from_db(self):
+        """Load all agent keys from DB on startup."""
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Integration).where(Integration.type == "desktop_agent")
+                )
+                for integration in result.scalars().all():
+                    if integration.config and "key" in integration.config:
+                        user_id = integration.user_id
+                        self.agent_keys[user_id] = integration.config
+                        self.user_agents[user_id] = integration.config["key"]
+            print(f"  Agent keys loaded: {len(self.agent_keys)} users")
+        except Exception as e:
+            print(f"  Agent key load skipped: {e}")
 
     def register_agent(self, agent_key: str, user_id: str, websocket) -> AgentConnection:
         conn = AgentConnection(agent_key, user_id, websocket)
