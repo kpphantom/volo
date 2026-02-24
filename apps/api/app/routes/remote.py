@@ -6,6 +6,7 @@ coding chat (autonomous agent loop), and GitHub repository listing.
 
 import os
 import json
+import time
 import asyncio
 from typing import Optional
 
@@ -491,11 +492,17 @@ async def list_github_repos(
 
 # ── WebSocket Relay ────────────────────────────────────────────
 
+# Server-side connection tuning
+WS_PING_INTERVAL = 25       # Send app-level ping every 25s
+WS_RECEIVE_TIMEOUT = 60     # If nothing received in 60s, assume dead
+                             # (agent heartbeats every 15s, so 60s = 4 missed beats)
+
+
 @router.websocket("/remote/ws/{agent_key}")
 async def agent_websocket(websocket: WebSocket, agent_key: str):
     """
     WebSocket endpoint for desktop agents.
-    The agent connects with its unique key and receives commands.
+    Rock-solid connection with server-side health monitoring.
     """
     await websocket.accept()
 
@@ -513,6 +520,7 @@ async def agent_websocket(websocket: WebSocket, agent_key: str):
 
     # Register the connection
     conn = remote_manager.register_agent(agent_key, user_id, websocket)
+    conn.last_heartbeat = time.time()
     print(f"🖥️  Desktop agent connected: user={user_id}, key={agent_key[:20]}...")
 
     await websocket.send_json({
@@ -521,30 +529,75 @@ async def agent_websocket(websocket: WebSocket, agent_key: str):
         "user_id": user_id,
     })
 
+    # ── Server-side ping task ────────────────────────────────
+    # Sends periodic app-level pings to keep the connection alive and
+    # prevent reverse proxies / load balancers from killing idle WS.
+    async def server_ping_loop():
+        try:
+            while True:
+                await asyncio.sleep(WS_PING_INTERVAL)
+                try:
+                    await websocket.send_json({"type": "ping", "ts": time.time()})
+                except Exception:
+                    break  # Connection dead — exit loop
+        except asyncio.CancelledError:
+            pass
+
+    ping_task = asyncio.create_task(server_ping_loop())
+
     try:
         while True:
-            data = await websocket.receive_json()
+            # ── Receive with timeout ─────────────────────────
+            # If agent sends nothing for WS_RECEIVE_TIMEOUT seconds
+            # (heartbeats come every 15s), the connection is dead.
+            try:
+                raw = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=WS_RECEIVE_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                print(f"⏰ Agent timeout (no data in {WS_RECEIVE_TIMEOUT}s): user={user_id}")
+                break
+
+            # ── Parse JSON safely ────────────────────────────
+            try:
+                data = json.loads(raw)
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"⚠️  Malformed message from agent ({user_id}): {e}")
+                continue  # Don't disconnect on a single bad message
+
             msg_type = data.get("type")
 
             if msg_type == "heartbeat":
-                conn.last_heartbeat = __import__("time").time()
-                await websocket.send_json({"type": "heartbeat_ack"})
+                conn.last_heartbeat = time.time()
+                try:
+                    await websocket.send_json({"type": "heartbeat_ack"})
+                except Exception:
+                    break
+
+            elif msg_type == "pong":
+                # Agent responded to our server-side ping
+                conn.last_heartbeat = time.time()
 
             elif msg_type == "command_result":
-                # Agent is responding to a command
+                conn.last_heartbeat = time.time()
                 command_id = data.get("command_id")
                 result = data.get("result", {})
                 if command_id:
                     conn.resolve_command(command_id, result)
 
             elif msg_type == "stream":
-                # Agent is streaming output (e.g., terminal output)
-                # This gets picked up by the SSE chat stream
-                pass
+                conn.last_heartbeat = time.time()
 
     except WebSocketDisconnect:
         print(f"🔌 Desktop agent disconnected: user={user_id}")
     except Exception as e:
         print(f"❌ Agent WebSocket error: {e}")
     finally:
+        # Clean up server-side ping task
+        ping_task.cancel()
+        try:
+            await ping_task
+        except asyncio.CancelledError:
+            pass
         remote_manager.unregister_agent(agent_key)

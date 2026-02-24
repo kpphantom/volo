@@ -36,10 +36,12 @@ USER volo
 EXPOSE 8000
 
 # Production: Gunicorn with Uvicorn workers
+# timeout=300 aligns with nginx proxy_read_timeout for long-lived WebSockets
 CMD ["python", "-m", "gunicorn", "main:app", \
      "--bind", "0.0.0.0:8000", \
      "--workers", "2", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--timeout", "120", \
+     "--timeout", "300", \
+     "--graceful-timeout", "30", \
      "--keep-alive", "5", \
      "--access-logfile", "-"]

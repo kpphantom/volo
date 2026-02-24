@@ -55,6 +55,9 @@ class AgentConnection:
             return result
         except asyncio.TimeoutError:
             return {"error": f"Command timed out after {timeout}s", "command_id": command_id}
+        except Exception as e:
+            # Connection died mid-command
+            return {"error": f"Agent connection lost: {e}", "command_id": command_id}
         finally:
             self.pending_commands.pop(command_id, None)
 
@@ -125,7 +128,9 @@ class RemoteAgentManager:
         agent = self.get_agent(user_id)
         if not agent:
             return False
-        return (time.time() - agent.last_heartbeat) < 30
+        # Agent heartbeats every 15s, server pings every 25s.
+        # If nothing heard in 45s, it's dead.
+        return (time.time() - agent.last_heartbeat) < 45
 
     # ── Multi-Session Management ─────────────────────────────
 

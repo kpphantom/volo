@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
- * VOLO Desktop Agent
+ * VOLO Desktop Agent v2.0 — Rock-Solid Connection
  * 
  * Runs on your laptop/desktop. Connects to the Volo server via WebSocket
  * and executes commands (terminal, file read/write, open VS Code) so you
  * can code from your phone through Volo's chat interface.
  * 
- * Usage:
- *   1. Copy .env.example to .env
- *   2. Paste your agent key from the Volo app
- *   3. npm install && npm start
+ * Connection reliability features:
+ * - Native WebSocket ping/pong (RFC 6455)
+ * - Application-level heartbeats as fallback
+ * - Dead connection detection (no pong within timeout)
+ * - Exponential backoff reconnection (1s → 30s max)
+ * - Graceful close vs unexpected disconnect handling
+ * - Connection state machine
  */
 
 require('dotenv').config();
@@ -23,14 +26,20 @@ const os = require('os');
 const AGENT_KEY = process.env.VOLO_AGENT_KEY;
 const SERVER_URL = process.env.VOLO_SERVER_URL || 'ws://localhost:8000';
 const WORK_DIR = (process.env.WORK_DIR || '~/Projects').replace('~', os.homedir());
-const HEARTBEAT_INTERVAL = 10_000; // 10s
-const RECONNECT_DELAY = 5_000; // 5s
+
+// Connection tuning
+const PING_INTERVAL = 20_000;      // Send ping every 20s
+const PONG_TIMEOUT = 10_000;       // If no pong within 10s, connection is dead
+const HEARTBEAT_INTERVAL = 15_000; // App-level heartbeat every 15s
+const MIN_RECONNECT_DELAY = 1_000; // Start reconnect at 1s
+const MAX_RECONNECT_DELAY = 30_000;// Cap at 30s
+const CONNECT_TIMEOUT = 15_000;    // 15s to establish connection
 
 if (!AGENT_KEY || AGENT_KEY === 'your-agent-key-here') {
   console.error('❌ No agent key configured.');
   console.error('   1. Open Volo on your phone');
-  console.error('   2. Go to VS Code page → copy your agent key');
-  console.error('   3. Paste it in .env as VOLO_AGENT_KEY=...');
+  console.error('   2. Go to Code tab → copy your setup command');
+  console.error('   3. Or paste agent key in .env as VOLO_AGENT_KEY=...');
   process.exit(1);
 }
 
@@ -39,14 +48,28 @@ if (!fs.existsSync(WORK_DIR)) {
   fs.mkdirSync(WORK_DIR, { recursive: true });
 }
 
+// ── Connection State Machine ────────────────────────────────
+const State = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  RECONNECTING: 'reconnecting',
+};
+
 let ws = null;
+let state = State.DISCONNECTED;
+let pingTimer = null;
 let heartbeatTimer = null;
+let pongTimer = null;
 let reconnectTimer = null;
+let connectTimer = null;
+let reconnectAttempts = 0;
+let intentionalClose = false;
+let lastPongTime = Date.now();
 
 // Multi-session: track per-session working directories
-// session_id -> { repo, workDir }
 const sessions = new Map();
-// File backups for Keep/Undo support (backup_id -> backup info)
+// File backups for Keep/Undo support
 const fileBackups = new Map();
 let defaultWorkDir = WORK_DIR;
 
@@ -313,26 +336,73 @@ const handlers = {
   },
 };
 
-// ── WebSocket Connection ────────────────────────────────────
+// ── WebSocket Connection (Rock-Solid) ───────────────────────
 
 function connect() {
+  if (state === State.CONNECTING || state === State.CONNECTED) return;
+  
+  state = State.CONNECTING;
+  intentionalClose = false;
   const url = `${SERVER_URL}/api/remote/ws/${AGENT_KEY}`;
-  console.log(`\n🔌 Connecting to Volo server...`);
-  console.log(`   ${url.replace(AGENT_KEY, AGENT_KEY.slice(0, 20) + '...')}`);
+  
+  if (reconnectAttempts === 0) {
+    console.log(`\n🔌 Connecting to Volo server...`);
+    console.log(`   ${url.replace(AGENT_KEY, AGENT_KEY.slice(0, 20) + '...')}`);
+  } else {
+    console.log(`🔄 Reconnect attempt #${reconnectAttempts}...`);
+  }
 
-  ws = new WebSocket(url);
+  // Connection timeout — if handshake doesn't complete in time, force retry
+  connectTimer = setTimeout(() => {
+    if (state === State.CONNECTING) {
+      console.log('⏰ Connection timeout. Retrying...');
+      destroyConnection();
+      scheduleReconnect();
+    }
+  }, CONNECT_TIMEOUT);
+
+  try {
+    ws = new WebSocket(url, {
+      handshakeTimeout: CONNECT_TIMEOUT,
+      // Keep TCP alive at OS level
+      perMessageDeflate: false,
+    });
+  } catch (err) {
+    console.error(`❌ Failed to create WebSocket: ${err.message}`);
+    state = State.DISCONNECTED;
+    scheduleReconnect();
+    return;
+  }
 
   ws.on('open', () => {
+    clearTimeout(connectTimer);
+    connectTimer = null;
+    state = State.CONNECTED;
+    reconnectAttempts = 0;
+    lastPongTime = Date.now();
+    
     console.log('✅ Connected to Volo server');
     console.log(`📂 Work directory: ${WORK_DIR}`);
     console.log('⏳ Waiting for commands from your phone...\n');
 
-    // Start heartbeat
-    heartbeatTimer = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'heartbeat', timestamp: Date.now() }));
-      }
-    }, HEARTBEAT_INTERVAL);
+    // Start native WebSocket ping/pong (RFC 6455)
+    startPing();
+    
+    // Start application-level heartbeat as backup
+    startHeartbeat();
+  });
+
+  ws.on('pong', () => {
+    // Server responded to our ping — connection is alive
+    lastPongTime = Date.now();
+    clearTimeout(pongTimer);
+    pongTimer = null;
+  });
+
+  ws.on('ping', () => {
+    // Server sent us a ping — respond with pong (ws lib does this automatically)
+    // But update our last-known-alive timestamp
+    lastPongTime = Date.now();
   });
 
   ws.on('message', async (data) => {
@@ -344,7 +414,23 @@ function connect() {
         return;
       }
 
-      if (msg.type === 'heartbeat_ack') return;
+      if (msg.type === 'heartbeat_ack') {
+        lastPongTime = Date.now();
+        return;
+      }
+
+      // Server-sent application-level ping — respond with pong
+      if (msg.type === 'ping') {
+        lastPongTime = Date.now();
+        safeSend({ type: 'pong', timestamp: Date.now() });
+        return;
+      }
+
+      // Server-sent pong (response to our heartbeat)
+      if (msg.type === 'pong') {
+        lastPongTime = Date.now();
+        return;
+      }
 
       if (msg.type === 'command') {
         const { command_id, command_type, payload, session_id } = msg;
@@ -352,71 +438,195 @@ function connect() {
 
         const handler = handlers[command_type];
         if (!handler) {
-          ws.send(JSON.stringify({
+          safeSend({
             type: 'command_result',
             command_id,
             result: { error: `Unknown command: ${command_type}` },
-          }));
+          });
           return;
         }
 
         try {
           const result = await handler(payload, session_id);
           console.log(`✅ ${command_type} completed`);
-          ws.send(JSON.stringify({
+          safeSend({
             type: 'command_result',
             command_id,
             result,
-          }));
+          });
         } catch (e) {
           console.error(`❌ ${command_type} failed: ${e.message}`);
-          ws.send(JSON.stringify({
+          safeSend({
             type: 'command_result',
             command_id,
             result: { error: e.message },
-          }));
+          });
         }
       }
     } catch (e) {
-      console.error('Failed to parse message:', e.message);
+      // Don't crash on parse errors — just log and continue
+      console.error('⚠️  Failed to parse message:', e.message);
     }
   });
 
   ws.on('close', (code, reason) => {
-    console.log(`\n🔌 Disconnected (code: ${code})`);
+    const reasonStr = reason ? reason.toString() : '';
+    clearTimeout(connectTimer);
+    connectTimer = null;
+    
+    if (intentionalClose) {
+      console.log('👋 Connection closed (intentional)');
+      state = State.DISCONNECTED;
+      cleanup();
+      return;
+    }
+    
+    if (code === 4001) {
+      console.log('❌ Invalid agent key. Please check your key and restart.');
+      state = State.DISCONNECTED;
+      cleanup();
+      process.exit(1);
+      return;
+    }
+    
+    console.log(`🔌 Disconnected (code: ${code}${reasonStr ? ', reason: ' + reasonStr : ''})`);
+    state = State.DISCONNECTED;
     cleanup();
     scheduleReconnect();
   });
 
   ws.on('error', (err) => {
-    console.error(`❌ WebSocket error: ${err.message}`);
+    // Don't log ECONNREFUSED spam during reconnection
+    if (err.code === 'ECONNREFUSED' && reconnectAttempts > 0) {
+      return;
+    }
+    if (err.code !== 'ECONNRESET') {
+      console.error(`❌ WebSocket error: ${err.message}`);
+    }
   });
 }
 
-function cleanup() {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
+/**
+ * Safely send a message, handling connection errors gracefully.
+ */
+function safeSend(msg) {
+  try {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+    }
+  } catch (e) {
+    console.error('⚠️  Send failed:', e.message);
   }
 }
 
+/**
+ * Native WebSocket ping/pong for reliable keep-alive.
+ * If server doesn't respond with pong within PONG_TIMEOUT, connection is dead.
+ */
+function startPing() {
+  clearInterval(pingTimer);
+  pingTimer = setInterval(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    
+    // Check if we've heard from server recently
+    const silenceMs = Date.now() - lastPongTime;
+    if (silenceMs > PING_INTERVAL + PONG_TIMEOUT) {
+      console.log(`💀 No response from server for ${Math.round(silenceMs / 1000)}s. Reconnecting...`);
+      destroyConnection();
+      scheduleReconnect();
+      return;
+    }
+    
+    // Send native WS ping
+    try {
+      ws.ping();
+    } catch (e) {
+      // ping failed — connection is dead
+      destroyConnection();
+      scheduleReconnect();
+      return;
+    }
+    
+    // Set a timeout — if no pong comes back, connection is dead
+    clearTimeout(pongTimer);
+    pongTimer = setTimeout(() => {
+      if (state === State.CONNECTED) {
+        console.log('💀 Pong timeout — server not responding. Reconnecting...');
+        destroyConnection();
+        scheduleReconnect();
+      }
+    }, PONG_TIMEOUT);
+  }, PING_INTERVAL);
+}
+
+/**
+ * Application-level heartbeat as a backup to native ping/pong.
+ * Some proxies/load balancers strip WS ping frames.
+ */
+function startHeartbeat() {
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(() => {
+    safeSend({ type: 'heartbeat', timestamp: Date.now() });
+  }, HEARTBEAT_INTERVAL);
+}
+
+/**
+ * Force-destroy the WebSocket without waiting for close handshake.
+ */
+function destroyConnection() {
+  cleanup();
+  if (ws) {
+    try {
+      ws.removeAllListeners();
+      ws.terminate(); // Hard kill, don't wait for close handshake
+    } catch (e) {}
+    ws = null;
+  }
+  state = State.DISCONNECTED;
+}
+
+function cleanup() {
+  clearInterval(pingTimer);
+  clearInterval(heartbeatTimer);
+  clearTimeout(pongTimer);
+  clearTimeout(connectTimer);
+  pingTimer = null;
+  heartbeatTimer = null;
+  pongTimer = null;
+  connectTimer = null;
+}
+
+/**
+ * Exponential backoff reconnection: 1s → 2s → 4s → 8s → 16s → 30s (cap)
+ */
 function scheduleReconnect() {
   if (reconnectTimer) return;
-  console.log(`   Reconnecting in ${RECONNECT_DELAY / 1000}s...`);
+  if (intentionalClose) return;
+  
+  state = State.RECONNECTING;
+  reconnectAttempts++;
+  
+  const delay = Math.min(
+    MIN_RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1),
+    MAX_RECONNECT_DELAY
+  );
+  
+  console.log(`   Reconnecting in ${(delay / 1000).toFixed(1)}s... (attempt #${reconnectAttempts})`);
+  
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connect();
-  }, RECONNECT_DELAY);
+  }, delay);
 }
 
 // ── Startup ─────────────────────────────────────────────────
 
 console.log('');
 console.log('╔═══════════════════════════════════════════╗');
-console.log('║      🚀 VOLO Desktop Agent v1.0          ║');
+console.log('║      🚀 VOLO Desktop Agent v2.0          ║');
 console.log('║                                           ║');
 console.log('║  Code from your phone, build on your      ║');
-console.log('║  machine. VS Code + Claude, mobile.       ║');
+console.log('║  machine. Rock-solid connection.           ║');
 console.log('╚═══════════════════════════════════════════╝');
 console.log('');
 
@@ -425,13 +635,36 @@ connect();
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n👋 Shutting down agent...');
+  intentionalClose = true;
   cleanup();
-  if (ws) ws.close();
-  process.exit(0);
+  clearTimeout(reconnectTimer);
+  if (ws) {
+    ws.close(1000, 'Agent shutting down');
+    // Give it a moment to close cleanly, then force exit
+    setTimeout(() => process.exit(0), 500);
+  } else {
+    process.exit(0);
+  }
 });
 
 process.on('SIGTERM', () => {
+  intentionalClose = true;
   cleanup();
-  if (ws) ws.close();
-  process.exit(0);
+  clearTimeout(reconnectTimer);
+  if (ws) ws.close(1000, 'Agent shutting down');
+  setTimeout(() => process.exit(0), 500);
+});
+
+// Prevent crashes from unhandled errors
+process.on('uncaughtException', (err) => {
+  console.error('⚠️  Uncaught exception:', err.message);
+  // Don't exit — try to reconnect
+  if (state !== State.RECONNECTING) {
+    destroyConnection();
+    scheduleReconnect();
+  }
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️  Unhandled rejection:', reason);
 });
