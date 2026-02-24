@@ -26,6 +26,7 @@ import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
+import { toast } from 'sonner';
 
 export default function HomePage() {
   const { currentPage, sidebarOpen, commandPaletteOpen, toggleSidebar, setCommandPaletteOpen, setSidebarOpen } = useAppStore();
@@ -36,17 +37,26 @@ export default function HomePage() {
   useEffect(() => {
     if (isAuthenticated) return;
     const params = new URLSearchParams(window.location.search);
+
+    // Handle OAuth errors
+    const error = params.get('error');
+    if (error) {
+      toast.error(decodeURIComponent(error));
+      window.history.replaceState({}, '', '/');
+      return;
+    }
+
     const authToken = params.get('auth_token');
     const provider = params.get('provider');
     if (authToken && provider) {
       const userId = params.get('user_id') || `${provider}-user`;
       const name = params.get('name') || `${provider} User`;
-      const username = params.get('username') || '';
+      const email = params.get('email') || `user@${provider}.com`;
       const avatar = params.get('avatar') || undefined;
       login(
         {
           id: userId,
-          email: username ? `${username}@${provider}.com` : `user@${provider}.com`,
+          email: decodeURIComponent(email),
           name: decodeURIComponent(name),
           avatar,
           provider,

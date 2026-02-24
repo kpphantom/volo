@@ -267,7 +267,7 @@ async def github_oauth_start():
         f"https://github.com/login/oauth/authorize?"
         f"client_id={settings.github_client_id}"
         f"&redirect_uri={redirect_uri}"
-        f"&scope=read:user user:email"
+        f"&scope=read:user user:email repo"
         f"&state={state}"
     )
     return {"url": auth_url}
@@ -276,64 +276,89 @@ async def github_oauth_start():
 @router.get("/github/callback")
 async def github_oauth_callback(code: str = "", state: str = ""):
     """Handle GitHub OAuth callback."""
-    if not code or not state:
-        raise HTTPException(400, "Missing code or state")
+    frontend_url = settings.frontend_url.rstrip("/")
+    try:
+        if not code or not state:
+            return RedirectResponse(url=f"{frontend_url}/?error=Missing+code+or+state", status_code=302)
 
-    _pop_state(state, "github")
-    redirect_uri = settings.github_redirect_uri or f"{settings.frontend_url}/api/auth/github/callback"
+        _pop_state(state, "github")
+        redirect_uri = settings.github_redirect_uri or f"{settings.frontend_url}/api/auth/github/callback"
 
-    async with httpx.AsyncClient() as client:
-        token_resp = await client.post(
-            "https://github.com/login/oauth/access_token",
-            data={
-                "client_id": settings.github_client_id,
-                "client_secret": settings.github_client_secret,
-                "code": code,
-                "redirect_uri": redirect_uri,
-            },
-            headers={"Accept": "application/json"},
-        )
-        if token_resp.status_code != 200:
-            raise HTTPException(400, f"GitHub token exchange failed: {token_resp.text}")
-        tokens = token_resp.json()
+        async with httpx.AsyncClient() as client:
+            token_resp = await client.post(
+                "https://github.com/login/oauth/access_token",
+                data={
+                    "client_id": settings.github_client_id,
+                    "client_secret": settings.github_client_secret,
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                },
+                headers={"Accept": "application/json"},
+            )
+            if token_resp.status_code != 200:
+                return RedirectResponse(url=f"{frontend_url}/?error=GitHub+token+exchange+failed", status_code=302)
+            tokens = token_resp.json()
 
-        gh_access_token = tokens.get("access_token")
-        if not gh_access_token:
-            raise HTTPException(400, f"GitHub did not return access_token: {tokens}")
+            gh_access_token = tokens.get("access_token")
+            if not gh_access_token:
+                return RedirectResponse(url=f"{frontend_url}/?error=GitHub+did+not+return+access+token", status_code=302)
 
-        profile_resp = await client.get(
-            "https://api.github.com/user",
-            headers={
-                "Authorization": f"Bearer {gh_access_token}",
-                "Accept": "application/json",
-            },
-        )
-        profile = profile_resp.json()
-
-        email = profile.get("email") or ""
-        if not email:
-            email_resp = await client.get(
-                "https://api.github.com/user/emails",
+            profile_resp = await client.get(
+                "https://api.github.com/user",
                 headers={
                     "Authorization": f"Bearer {gh_access_token}",
                     "Accept": "application/json",
                 },
             )
-            emails = email_resp.json()
-            if isinstance(emails, list):
-                primary = next((e for e in emails if e.get("primary")), None)
-                email = (primary or emails[0]).get("email", "") if emails else ""
+            profile = profile_resp.json()
 
-    user_data = await find_or_create_oauth_user(
-        provider="github",
-        provider_id=str(profile.get("id", "")),
-        email=email or f"{profile.get('login', 'user')}@github.com",
-        name=profile.get("name") or profile.get("login", "GitHub User"),
-        avatar_url=profile.get("avatar_url"),
-        access_token=gh_access_token,
-    )
+            email = profile.get("email") or ""
+            if not email:
+                email_resp = await client.get(
+                    "https://api.github.com/user/emails",
+                    headers={
+                        "Authorization": f"Bearer {gh_access_token}",
+                        "Accept": "application/json",
+                    },
+                )
+                emails = email_resp.json()
+                if isinstance(emails, list):
+                    primary = next((e for e in emails if e.get("primary")), None)
+                    email = (primary or emails[0]).get("email", "") if emails else ""
 
-    return RedirectResponse(url=build_frontend_redirect(user_data), status_code=302)
+        user_data = await find_or_create_oauth_user(
+            provider="github",
+            provider_id=str(profile.get("id", "")),
+            email=email or f"{profile.get('login', 'user')}@github.com",
+            name=profile.get("name") or profile.get("login", "GitHub User"),
+            avatar_url=profile.get("avatar_url"),
+            access_token=gh_access_token,
+        )
+
+        return RedirectResponse(url=build_frontend_redirect(user_data), status_code=302)
+    except HTTPException:
+        return RedirectResponse(url=f"{frontend_url}/?error=GitHub+login+failed", status_code=302)
+    except Exception:
+        return RedirectResponse(url=f"{frontend_url}/?error=GitHub+login+failed", status_code=302)
+
+
+@router.get("/github/token")
+async def github_token_status(user_id: str = ""):
+    """Check if the user has a stored GitHub OAuth token (from login)."""
+    if not user_id:
+        return {"has_token": False}
+    async with async_session() as session:
+        result = await session.execute(
+            select(Integration).where(
+                Integration.user_id == user_id,
+                Integration.type == "github",
+                Integration.status == "connected",
+            )
+        )
+        integration = result.scalar_one_or_none()
+        if integration and integration.config and integration.config.get("access_token"):
+            return {"has_token": True}
+    return {"has_token": False}
 
 
 # ===== Discord OAuth 2.0 =====

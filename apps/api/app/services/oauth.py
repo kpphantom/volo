@@ -125,6 +125,7 @@ def build_frontend_redirect(user_data: dict) -> str:
         "provider": user_data["provider"],
         "user_id": user_data["user_id"],
         "name": user_data["name"],
+        "email": user_data.get("email", ""),
         "avatar": user_data.get("avatar", ""),
     }
     return f"{frontend_url}/?{urlencode(params, quote_via=quote)}"

@@ -162,6 +162,7 @@ export function VSCodePage() {
   const [keyCopied, setKeyCopied] = useState(false);
   const [githubToken, setGithubToken] = useState('');
   const [showTokenInput, setShowTokenInput] = useState(false);
+  const [githubConnected, setGithubConnected] = useState(false);
 
   // Multi-session state
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -214,6 +215,23 @@ export function VSCodePage() {
     checkStatus();
     const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
+  }, [userId]);
+
+  // Check if user has a GitHub OAuth token from login
+  useEffect(() => {
+    const checkGitHubToken = async () => {
+      try {
+        const data = await api.get<{ has_token: boolean }>(`/api/auth/github/token?user_id=${userId}`);
+        if (data.has_token) {
+          setGithubConnected(true);
+        }
+      } catch {
+        // Not critical
+      }
+    };
+    if (userId && userId !== 'dev-user') {
+      checkGitHubToken();
+    }
   }, [userId]);
 
   // Auto-fetch repos on repos view
@@ -667,35 +685,45 @@ export function VSCodePage() {
                   Generate a connection to pair your desktop with Volo.
                 </p>
 
-                <button
-                  onClick={() => setShowTokenInput(!showTokenInput)}
-                  className="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1"
-                >
-                  <Github className="w-3 h-3" />
-                  {showTokenInput ? 'Hide' : 'Add'} GitHub token (optional)
-                </button>
-
-                <AnimatePresence>
-                  {showTokenInput && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
+                {githubConnected ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
+                    <Github className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs text-emerald-400 font-medium">GitHub connected via login</span>
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 ml-auto" />
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setShowTokenInput(!showTokenInput)}
+                      className="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1"
                     >
-                      <input
-                        type="password"
-                        value={githubToken}
-                        onChange={(e) => setGithubToken(e.target.value)}
-                        placeholder="ghp_xxxxxxxxxxxx"
-                        className="w-full px-3 py-2.5 rounded-lg bg-surface-dark-0 border border-white/5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-brand-500/30 min-h-[44px]"
-                        aria-label="GitHub personal access token"
-                      />
-                      <p className="text-[10px] text-zinc-600 mt-1">
-                        Needed to list your repos. Create at github.com/settings/tokens → scopes: repo
-                      </p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                      <Github className="w-3 h-3" />
+                      {showTokenInput ? 'Hide' : 'Add'} GitHub token (optional)
+                    </button>
+
+                    <AnimatePresence>
+                      {showTokenInput && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                        >
+                          <input
+                            type="password"
+                            value={githubToken}
+                            onChange={(e) => setGithubToken(e.target.value)}
+                            placeholder="ghp_xxxxxxxxxxxx"
+                            className="w-full px-3 py-2.5 rounded-lg bg-surface-dark-0 border border-white/5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-brand-500/30 min-h-[44px]"
+                            aria-label="GitHub personal access token"
+                          />
+                          <p className="text-[10px] text-zinc-600 mt-1">
+                            Needed to list your repos. Create at github.com/settings/tokens → scopes: repo
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </>
+                )}
 
                 <button
                   onClick={handleGenerateKey}

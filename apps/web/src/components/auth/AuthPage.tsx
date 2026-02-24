@@ -133,6 +133,7 @@ export function AuthPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<string | null>(null);
+  const [showMoreProviders, setShowMoreProviders] = useState(false);
   const { login } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -303,35 +304,48 @@ export function AuthPage() {
           </div>
 
           {/* More social options */}
-          <details className="mb-6 group">
-            <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-400 transition-colors text-center list-none">
-              <span className="border-b border-dashed border-zinc-600">More sign-in options</span>
-            </summary>
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              className="grid grid-cols-3 gap-2 mt-3"
+          <div className="mb-6 text-center">
+            <button
+              onClick={() => setShowMoreProviders(!showMoreProviders)}
+              className="text-xs text-zinc-500 hover:text-zinc-400 transition-colors"
             >
-              {socialProviders.slice(4).map((provider) => (
-                <button
-                  key={provider.id}
-                  onClick={() => handleSocialLogin(provider.id)}
-                  disabled={!!socialLoading}
-                  className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border ${provider.color} bg-white/[0.03] transition-all duration-200 disabled:opacity-50 min-h-[48px]`}
-                  aria-label={`Sign in with ${provider.name}`}
+              <span className="border-b border-dashed border-zinc-600">
+                {showMoreProviders ? 'Fewer options' : 'More sign-in options'}
+              </span>
+            </button>
+            <AnimatePresence>
+              {showMoreProviders && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
                 >
-                  {socialLoading === provider.id ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
-                  ) : (
-                    <>
-                      {provider.icon}
-                      <span className="text-[11px] text-zinc-400">{provider.name}</span>
-                    </>
-                  )}
-                </button>
-              ))}
-            </motion.div>
-          </details>
+                  <div className="grid grid-cols-3 gap-2 mt-3">
+                    {socialProviders.slice(4).map((provider) => (
+                      <button
+                        key={provider.id}
+                        onClick={() => handleSocialLogin(provider.id)}
+                        disabled={!!socialLoading}
+                        className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border ${provider.color} bg-white/[0.03] transition-all duration-200 disabled:opacity-50 min-h-[48px]`}
+                        aria-label={`Sign in with ${provider.name}`}
+                      >
+                        {socialLoading === provider.id ? (
+                          <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+                        ) : (
+                          <>
+                            {provider.icon}
+                            <span className="text-[11px] text-zinc-400">{provider.name}</span>
+                          </>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Divider */}
           <div className="flex items-center gap-4 mb-6">

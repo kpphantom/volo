@@ -14,9 +14,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Qu
 from fastapi.responses import StreamingResponse, PlainTextResponse
 from pydantic import BaseModel
 import httpx
+from sqlalchemy import select
 
 from app.services.remote_agent import remote_manager
 from app.agent.coding_agent import CodingAgent
+from app.database import async_session, Integration
 
 router = APIRouter()
 coding_agent = CodingAgent()
@@ -400,6 +402,23 @@ async def list_github_repos(
         token = info["github_token"]
     if not token:
         token = os.getenv("GITHUB_TOKEN", "")
+
+    # Check Integration table for stored GitHub OAuth token
+    if not token:
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Integration).where(
+                        Integration.user_id == user_id,
+                        Integration.type == "github",
+                        Integration.status == "connected",
+                    )
+                )
+                integration = result.scalar_one_or_none()
+                if integration and integration.config and integration.config.get("access_token"):
+                    token = integration.config["access_token"]
+        except Exception:
+            pass
 
     if token:
         try:
