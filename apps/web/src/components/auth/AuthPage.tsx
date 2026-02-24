@@ -147,12 +147,13 @@ export function AuthPage() {
         ? { email, password, name }
         : { email, password };
 
-      const data = await api.post<{ user_id?: string; id?: string; access_token?: string }>(endpoint, body);
+      const data = await api.post<{ user?: { id: string; email: string; name: string }; access_token?: string; refresh_token?: string }>(endpoint, body);
+      const user = data.user;
       login(
         {
-          id: data.user_id || data.id || email,
-          email,
-          name: name || email.split('@')[0],
+          id: user?.id || email,
+          email: user?.email || email,
+          name: user?.name || name || email.split('@')[0],
           provider: 'email',
           onboardingComplete: false,
         },
@@ -168,45 +169,31 @@ export function AuthPage() {
   };
 
   const handleSocialLogin = async (providerId: string) => {
+    // Providers with real OAuth flows on the backend
+    const oauthProviders = ['google', 'github', 'twitter', 'discord'];
+    const providerName = socialProviders.find((p) => p.id === providerId)?.name || providerId;
+
+    // Providers not yet implemented at all
+    if (!oauthProviders.includes(providerId)) {
+      toast.info(`${providerName} sign-in coming soon!`);
+      return;
+    }
+
     setSocialLoading(providerId);
     try {
-      // Try real OAuth redirect for supported providers
-      if (providerId === 'google') {
-        const data = await api.get<{ url?: string; auth_url?: string }>('/api/google/auth-url');
-        const authUrl = data?.url || data?.auth_url;
-        if (authUrl && authUrl.startsWith('http')) {
-          window.location.href = authUrl;
-          return;
-        }
+      const data = await api.get<{ url?: string }>(`/api/auth/${providerId}`);
+      if (data?.url && data.url.startsWith('http')) {
+        window.location.href = data.url;
+        return;
       }
-
-      if (providerId === 'twitter') {
-        try {
-          const data = await api.get<{ url?: string }>('/api/auth/twitter');
-          if (data?.url && data.url.startsWith('http')) {
-            window.location.href = data.url;
-            return;
-          }
-        } catch {}
+      toast.error(`${providerName} OAuth not configured on this server.`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : `${providerName} login failed`;
+      if (message.includes('501') || message.includes('not configured')) {
+        toast.info(`${providerName} sign-in is not configured yet. Ask the admin to set it up.`);
+      } else {
+        toast.error(message);
       }
-
-      // Demo login for providers not yet configured
-      await new Promise((r) => setTimeout(r, 1200));
-      const providerName = socialProviders.find((p) => p.id === providerId)?.name || providerId;
-      login(
-        {
-          id: `${providerId}-user-${Date.now()}`,
-          email: `user@${providerId}.com`,
-          name: `${providerName} User`,
-          avatar: undefined,
-          provider: providerId,
-          onboardingComplete: false,
-        },
-        `${providerId}-token-demo`
-      );
-      toast.success(`Signed in with ${providerName}`);
-    } catch {
-      toast.error('Social login failed. Try email instead.');
     } finally {
       setSocialLoading(null);
     }

@@ -55,6 +55,8 @@ class User(Base):
     name = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=True)  # nullable for OAuth
     avatar_url = Column(String(500), nullable=True)
+    provider = Column(String(50), nullable=True)        # google, github, twitter, discord, email
+    provider_id = Column(String(255), nullable=True)     # external user id from the OAuth provider
     role = Column(String(20), default="member")  # owner, admin, member
     preferences = Column(JSON, default=dict)
     onboarding_completed = Column(Boolean, default=False)
