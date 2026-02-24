@@ -23,6 +23,7 @@ from app.routes import activity as activity_routes
 from app.routes import billing as billing_routes
 from app.routes import conversations as conversation_routes
 from app.routes import public_api as public_api_routes
+from app.routes import authenticator as authenticator_routes
 # Life OS routes
 from app.routes import google as google_routes
 from app.routes import youtube as youtube_routes
@@ -119,6 +120,9 @@ app.include_router(fitness_routes.router, prefix="/api", tags=["Health & Fitness
 
 # ── Remote Desktop Agent
 app.include_router(remote_routes.router, prefix="/api", tags=["Remote Agent"])
+
+# ── Authenticator Vault (built-in 2FA)
+app.include_router(authenticator_routes.router, prefix="/api", tags=["Authenticator"])
 
 @app.get("/")
 async def root():

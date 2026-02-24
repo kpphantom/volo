@@ -8,7 +8,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Column, String, Text, Boolean, Integer, Float,
-    DateTime, JSON, ForeignKey, Enum as SQLEnum,
+    DateTime, JSON, ForeignKey, Enum as SQLEnum, Index,
     create_engine,
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -71,6 +71,10 @@ class User(Base):
 
 class Conversation(Base):
     __tablename__ = "conversations"
+    __table_args__ = (
+        Index("ix_conversations_user_id", "user_id"),
+        Index("ix_conversations_updated_at", "updated_at"),
+    )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -86,6 +90,10 @@ class Conversation(Base):
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
+    __table_args__ = (
+        Index("ix_chat_messages_conversation_id", "conversation_id"),
+        Index("ix_chat_messages_created_at", "created_at"),
+    )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False)
@@ -100,6 +108,9 @@ class ChatMessage(Base):
 
 class Integration(Base):
     __tablename__ = "integrations"
+    __table_args__ = (
+        Index("ix_integrations_user_type", "user_id", "type"),
+    )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -116,6 +127,10 @@ class Integration(Base):
 
 class Memory(Base):
     __tablename__ = "memories"
+    __table_args__ = (
+        Index("ix_memories_user_id", "user_id"),
+        Index("ix_memories_user_category", "user_id", "category"),
+    )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -167,6 +182,9 @@ class StandingOrder(Base):
 
 class ApprovalRequest(Base):
     __tablename__ = "approval_requests"
+    __table_args__ = (
+        Index("ix_approvals_user_status", "user_id", "status"),
+    )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -182,6 +200,9 @@ class ApprovalRequest(Base):
 
 class Notification(Base):
     __tablename__ = "notifications"
+    __table_args__ = (
+        Index("ix_notifications_user_read", "user_id", "read"),
+    )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -193,9 +214,38 @@ class Notification(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class AuthenticatorAccount(Base):
+    """TOTP / Google Authenticator accounts stored in Volo's vault."""
+    __tablename__ = "authenticator_accounts"
+    __table_args__ = (
+        Index("ix_auth_accounts_user_id", "user_id"),
+        Index("ix_auth_accounts_user_service", "user_id", "service"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    service = Column(String(100), nullable=False)       # "telegram", "github", "binance"
+    label = Column(String(255), nullable=False)          # display name, e.g. "Telegram @ballout"
+    encrypted_secret = Column(Text, nullable=False)      # Fernet-encrypted TOTP secret
+    issuer = Column(String(255), nullable=True)          # e.g. "Telegram"
+    digits = Column(Integer, default=6)                  # TOTP digits (6 or 8)
+    period = Column(Integer, default=30)                 # refresh period in seconds
+    algorithm = Column(String(10), default="SHA1")       # SHA1, SHA256, SHA512
+    icon = Column(String(500), nullable=True)            # icon URL for UI
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used_at = Column(DateTime, nullable=True)
+
+
 # ---- Engine & Session ----
 
-engine = create_async_engine(settings.database_url, echo=False)
+engine = create_async_engine(
+    settings.database_url,
+    echo=False,
+    pool_size=20,
+    max_overflow=10,
+    pool_recycle=3600,
+    pool_pre_ping=True,
+)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

@@ -1,6 +1,7 @@
 """
 VOLO — Unified Messaging Routes
 Aggregated inbox across Telegram, WhatsApp, iMessage, Signal.
+Auto-2FA: When a platform needs a TOTP code, Volo pulls it from the vault.
 """
 
 from fastapi import APIRouter, Query
@@ -8,9 +9,12 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.services.messaging import MessagingService
+from app.services.authenticator import authenticator_vault
 
 router = APIRouter()
 messaging = MessagingService()
+
+DEFAULT_USER = "dev-user"
 
 
 class SendMessageRequest(BaseModel):
@@ -67,5 +71,42 @@ async def send_message(body: SendMessageRequest):
 
 @router.get("/messages/platforms")
 async def get_messaging_platforms():
-    """Get list of messaging platforms and their connection status."""
-    return {"platforms": messaging.get_connected_platforms()}
+    """Get list of messaging platforms and their connection status + 2FA availability."""
+    platforms = messaging.get_connected_platforms()
+
+    # Check which platforms have TOTP configured in the vault
+    totp_accounts = await authenticator_vault.list_accounts(user_id=DEFAULT_USER)
+    totp_services = {a["service"] for a in totp_accounts}
+
+    for p in platforms:
+        p["has_2fa"] = p["id"] in totp_services
+
+    return {"platforms": platforms}
+
+
+@router.get("/messages/{platform}/2fa")
+async def get_platform_2fa(platform: str):
+    """
+    Get the current 2FA code for a messaging platform.
+    Called automatically when logging in or re-authenticating.
+
+    Example: GET /api/messages/telegram/2fa
+    Returns: {"code": "482901", "remaining_seconds": 17}
+
+    This is the magic — set up Telegram 2FA in Volo's authenticator once,
+    and the messaging page auto-fills it. No more opening Google Authenticator
+    and copy-pasting codes.
+    """
+    result = await authenticator_vault.get_code(user_id=DEFAULT_USER, service=platform)
+    if not result:
+        return {
+            "platform": platform,
+            "has_2fa": False,
+            "message": f"No authenticator configured for {platform}. "
+                       f"Add one at POST /api/authenticator/add with service='{platform}'",
+        }
+    return {
+        "platform": platform,
+        "has_2fa": True,
+        **result,
+    }

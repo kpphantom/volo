@@ -1,18 +1,26 @@
 """
 VOLO — Integrations Route
 Handles connecting and managing external service integrations.
+Persisted to PostgreSQL Integration table.
 """
 
-from fastapi import APIRouter
+from datetime import datetime
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from sqlalchemy import select
+
+from app.database import async_session, Integration
 
 router = APIRouter()
+
+DEFAULT_USER = "dev-user"
 
 
 class IntegrationConnect(BaseModel):
     type: str  # github, gmail, alpaca, etc.
-    credentials: dict  # encrypted credentials
+    credentials: dict  # will be stored in config JSON
     config: Optional[dict] = {}
 
 
@@ -137,29 +145,71 @@ AVAILABLE_INTEGRATIONS = [
 @router.get("/integrations")
 async def list_integrations():
     """List all available integrations and their connection status."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(Integration).where(Integration.user_id == DEFAULT_USER)
+        )
+        connected = [
+            {
+                "id": i.id,
+                "type": i.type,
+                "category": i.category,
+                "name": i.name,
+                "status": i.status,
+                "last_sync_at": i.last_sync_at.isoformat() if i.last_sync_at else None,
+                "created_at": i.created_at.isoformat() if i.created_at else None,
+            }
+            for i in result.scalars().all()
+        ]
+
     return {
         "available": AVAILABLE_INTEGRATIONS,
-        "connected": [],  # TODO: pull from database
+        "connected": connected,
     }
 
 
 @router.post("/integrations/connect")
 async def connect_integration(integration: IntegrationConnect):
     """Connect a new integration."""
-    # Validate integration type
     valid_types = [i["type"] for i in AVAILABLE_INTEGRATIONS]
     if integration.type not in valid_types:
-        return {"error": f"Unknown integration type: {integration.type}"}
+        raise HTTPException(400, f"Unknown integration type: {integration.type}")
 
-    # TODO: Encrypt credentials and store in database
-    # TODO: Validate the credentials actually work (test connection)
+    # Find display info
+    info = next((i for i in AVAILABLE_INTEGRATIONS if i["type"] == integration.type), {})
+
+    async with async_session() as session:
+        # Upsert — replace existing integration of same type
+        result = await session.execute(
+            select(Integration).where(
+                Integration.user_id == DEFAULT_USER,
+                Integration.type == integration.type,
+            )
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            existing.config = {**integration.credentials, **(integration.config or {})}
+            existing.status = "connected"
+            existing.last_sync_at = datetime.utcnow()
+        else:
+            session.add(Integration(
+                user_id=DEFAULT_USER,
+                type=integration.type,
+                category=info.get("category", "other"),
+                name=info.get("name", integration.type),
+                status="connected",
+                config={**integration.credentials, **(integration.config or {})},
+            ))
+
+        await session.commit()
 
     return {
         "success": True,
         "integration": {
             "type": integration.type,
             "status": "connected",
-            "message": f"{integration.type} connected successfully. Volo now has access.",
+            "message": f"{info.get('name', integration.type)} connected successfully.",
         },
     }
 
@@ -167,17 +217,32 @@ async def connect_integration(integration: IntegrationConnect):
 @router.delete("/integrations/{integration_id}")
 async def disconnect_integration(integration_id: str):
     """Disconnect an integration."""
-    # TODO: Remove from database, revoke tokens
-    return {
-        "success": True,
-        "message": f"Integration {integration_id} disconnected.",
-    }
+    async with async_session() as session:
+        result = await session.execute(
+            select(Integration).where(Integration.id == integration_id)
+        )
+        integration = result.scalar_one_or_none()
+        if not integration:
+            raise HTTPException(404, "Integration not found")
+
+        await session.delete(integration)
+        await session.commit()
+
+    return {"success": True, "message": f"Integration {integration_id} disconnected."}
 
 
 @router.post("/integrations/{integration_id}/sync")
 async def sync_integration(integration_id: str):
     """Trigger a manual sync for an integration."""
-    return {
-        "success": True,
-        "message": f"Sync started for {integration_id}",
-    }
+    async with async_session() as session:
+        result = await session.execute(
+            select(Integration).where(Integration.id == integration_id)
+        )
+        integration = result.scalar_one_or_none()
+        if not integration:
+            raise HTTPException(404, "Integration not found")
+
+        integration.last_sync_at = datetime.utcnow()
+        await session.commit()
+
+    return {"success": True, "message": f"Sync started for {integration_id}"}
