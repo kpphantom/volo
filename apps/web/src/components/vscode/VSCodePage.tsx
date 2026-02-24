@@ -150,7 +150,16 @@ const markdownComponents = {
 
 export function VSCodePage() {
   const user = useAuthStore((s) => s.user);
-  const userId = user?.id || 'dev-user';
+  const userId = user?.id || '';
+
+  // Don't render anything until we have a real user
+  if (!userId) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-sm text-zinc-500">Loading user...</p>
+      </div>
+    );
+  }
 
   const [view, setView] = useState<PageView>('setup');
   const [agentOnline, setAgentOnline] = useState(false);
@@ -180,33 +189,36 @@ export function VSCodePage() {
         const data = await api.get<{ online: boolean; sessions?: any[] }>(`/api/remote/agent-status?user_id=${userId}`);
         setAgentOnline(data.online);
         // Restore active sessions on load
-        if (data.sessions && data.sessions.length > 0 && sessions.length === 0) {
-          // Sessions exist from a previous connection — restore them
-          const restored: Session[] = data.sessions.map((s: any) => ({
-            session_id: s.session_id,
-            repo: {
-              id: 0,
-              name: s.repo.split('/').pop() || s.repo,
-              full_name: s.repo,
-              description: '',
-              language: '',
-              private: false,
-              clone_url: s.clone_url || '',
-              ssh_url: '',
-              html_url: '',
-              updated_at: s.started_at,
-              stargazers_count: 0,
-              default_branch: 'main',
-            },
-            messages: [{
-              role: 'system' as const,
-              content: `Reconnected to session on **${s.repo}**.`,
-              timestamp: new Date(s.started_at),
-            }],
-          }));
-          setSessions(restored);
-          setActiveSessionId(restored[0].session_id);
-          setView('coding');
+        if (data.sessions && data.sessions.length > 0) {
+          // Only restore if we have no local sessions yet
+          setSessions((prev) => {
+            if (prev.length > 0) return prev;
+            const restored: Session[] = data.sessions!.map((s: any) => ({
+              session_id: s.session_id,
+              repo: {
+                id: 0,
+                name: s.repo.split('/').pop() || s.repo,
+                full_name: s.repo,
+                description: '',
+                language: '',
+                private: false,
+                clone_url: s.clone_url || '',
+                ssh_url: '',
+                html_url: '',
+                updated_at: s.started_at,
+                stargazers_count: 0,
+                default_branch: 'main',
+              },
+              messages: [{
+                role: 'system' as const,
+                content: `Reconnected to session on **${s.repo}**.`,
+                timestamp: new Date(s.started_at),
+              }],
+            }));
+            setActiveSessionId(restored[0].session_id);
+            setView('coding');
+            return restored;
+          });
         }
       } catch {
         setAgentOnline(false);
@@ -754,14 +766,10 @@ export function VSCodePage() {
                   Agent not connected. Run the setup command on your computer:
                 </p>
 
-                {/* Tab selector */}
-                <div className="flex rounded-lg overflow-hidden border border-white/10">
-                  <button className="flex-1 px-4 py-2 text-xs font-medium bg-brand-600/20 text-brand-300 border-r border-white/10">
-                    Mac/Linux
-                  </button>
-                  <button className="flex-1 px-4 py-2 text-xs font-medium text-zinc-500 hover:bg-white/5">
-                    Windows
-                  </button>
+                {/* Platform label */}
+                <div className="flex items-center gap-2 px-1">
+                  <Terminal className="w-3.5 h-3.5 text-zinc-500" />
+                  <span className="text-xs text-zinc-500">Terminal (Mac / Linux / WSL)</span>
                 </div>
 
                 {/* One-liner command */}

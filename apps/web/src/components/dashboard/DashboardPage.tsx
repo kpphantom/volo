@@ -34,7 +34,6 @@ export function DashboardPage() {
   });
   const [uptime, setUptime] = useState('');
   const setPage = useAppStore((s) => s.setPage);
-  const sendMessage = useChatStore((s) => s.sendMessage);
 
   useEffect(() => {
     checkSystemHealth();
@@ -134,8 +133,8 @@ export function DashboardPage() {
               title="Market Prices"
               description="Live crypto & stock data"
               onClick={() => {
+                useChatStore.getState().setQueuedMessage("What's the price of Bitcoin, Ethereum, and Solana?");
                 setPage('chat');
-                setTimeout(() => sendMessage("What's the price of Bitcoin, Ethereum, and Solana?"), 100);
               }}
             />
           </div>

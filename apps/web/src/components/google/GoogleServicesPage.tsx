@@ -238,14 +238,13 @@ export function GoogleServicesPage() {
                 key={action.label}
                 onClick={() => {
                   const setPage = useAppStore.getState().setPage;
-                  const sendMessage = useChatStore.getState().sendMessage;
                   if (action.label === 'Health Overview') {
                     setPage('health');
                   } else if (action.label === 'Summarize Video') {
                     setPage('youtube');
                   } else {
+                    useChatStore.getState().setQueuedMessage(action.desc);
                     setPage('chat');
-                    setTimeout(() => sendMessage(action.desc), 100);
                   }
                 }}
                 className="flex items-center gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 transition-all text-left group"

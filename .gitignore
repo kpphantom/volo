@@ -45,3 +45,4 @@ credentials.json
 # Deployment (generated at deploy time)
 nginx/active.conf
 screenshots/
+stress_test.py

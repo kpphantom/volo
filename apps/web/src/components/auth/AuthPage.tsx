@@ -158,8 +158,12 @@ export function AuthPage() {
           provider: 'email',
           onboardingComplete: false,
         },
-        data.access_token || 'dev-token'
+        data.access_token || ''
       );
+      if (!data.access_token) {
+        toast.error('Server did not return an access token');
+        return;
+      }
       toast.success(mode === 'register' ? 'Account created!' : 'Welcome back!');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong';

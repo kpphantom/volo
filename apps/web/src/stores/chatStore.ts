@@ -7,18 +7,21 @@ interface ChatState {
   messages: Message[];
   isThinking: boolean;
   conversationId: string | null;
+  queuedMessage: string | null;
 
   // Actions
   sendMessage: (content: string) => void;
   addMessage: (message: Message) => void;
   clearMessages: () => void;
   setThinking: (thinking: boolean) => void;
+  setQueuedMessage: (msg: string | null) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isThinking: false,
   conversationId: null,
+  queuedMessage: null,
 
   sendMessage: async (content: string) => {
     const userMessage: Message = {
@@ -158,4 +161,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   clearMessages: () => set({ messages: [], conversationId: null }),
 
   setThinking: (thinking) => set({ isThinking: thinking }),
+
+  setQueuedMessage: (msg) => set({ queuedMessage: msg }),
 }));

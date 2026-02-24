@@ -408,7 +408,12 @@ function IntegrationsSection() {
 }
 
 function AppearanceSection() {
-  const [activeTheme, setActiveTheme] = useState('midnight');
+  const [activeTheme, setActiveTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('volo-color-theme') || 'midnight';
+    }
+    return 'midnight';
+  });
   const [agentName, setAgentName] = useState('Volo');
   const [savingName, setSavingName] = useState(false);
 
@@ -508,12 +513,13 @@ function AccessibilitySection() {
   } | null>(null);
 
   useEffect(() => {
+    let unsub: (() => void) | undefined;
     import('@/stores/themeStore').then(({ useThemeStore }) => {
       const s = useThemeStore.getState();
       setThemeStore(s);
-      // Subscribe to changes
-      useThemeStore.subscribe((state) => setThemeStore({ ...state }));
+      unsub = useThemeStore.subscribe((state) => setThemeStore({ ...state }));
     });
+    return () => unsub?.();
   }, []);
 
   if (!themeStore) return null;
@@ -661,6 +667,9 @@ function NotificationsSection() {
           </div>
           <button
             onClick={() => toggle(item.key)}
+            role="switch"
+            aria-checked={settings[item.key]}
+            aria-label={item.label}
             className={cn(
               'w-11 h-6 rounded-full transition-colors relative',
               settings[item.key] ? 'bg-brand-600' : 'bg-zinc-700'

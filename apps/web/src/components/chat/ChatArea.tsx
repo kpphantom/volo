@@ -10,7 +10,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { toast } from 'sonner';
 
 export function ChatArea() {
-  const { messages, isThinking, sendMessage } = useChatStore();
+  const { messages, isThinking, sendMessage, queuedMessage, setQueuedMessage } = useChatStore();
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
@@ -50,6 +50,14 @@ export function ChatArea() {
   }, [messages.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track scroll position for "scroll to bottom" button
+  useEffect(() => {
+    // Process queued messages from other pages (e.g. Dashboard quick actions)
+    if (queuedMessage) {
+      sendMessage(queuedMessage);
+      setQueuedMessage(null);
+    }
+  }, [queuedMessage, sendMessage, setQueuedMessage]);
+
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (!el) return;

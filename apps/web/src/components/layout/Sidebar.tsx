@@ -227,7 +227,7 @@ export function Sidebar() {
       </div>
 
       {/* Bottom — Dashboard & Settings */}
-      <nav className="border-t border-white/5 p-3 space-y-1" role="navigation" aria-label="Main navigation">
+      <nav className="border-t border-white/5 p-3 space-y-1 overflow-y-auto max-h-[50vh]" role="navigation" aria-label="Main navigation">
         {navItems.map((item) => (
           <button
             key={item.id}
