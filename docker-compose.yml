@@ -1,0 +1,98 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ─────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: volo-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: volo
+      POSTGRES_PASSWORD: volo
+      POSTGRES_DB: volo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U volo"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Redis ──────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: volo-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── API (FastAPI) ──────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: volo-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://volo:volo@postgres:5432/volo
+      REDIS_URL: redis://redis:6379
+      APP_ENV: development
+      FRONTEND_URL: http://localhost:3000
+    env_file:
+      - ./apps/api/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── Web (Next.js) ─────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: volo-web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web/src:/app/src
+    command: npm run dev
+
+  # ── Worker (Background Jobs) ──────────────────
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: volo-worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://volo:volo@postgres:5432/volo
+      REDIS_URL: redis://redis:6379
+    env_file:
+      - ./apps/api/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    command: python -m app.worker
+
+volumes:
+  postgres_data:
+  redis_data:

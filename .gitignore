@@ -40,3 +40,7 @@ coverage/
 *.pem
 *.key
 credentials.json
+.env.prod
+
+# Deployment (generated at deploy time)
+nginx/active.conf

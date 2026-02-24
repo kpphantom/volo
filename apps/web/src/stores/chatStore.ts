@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { generateId } from '@/lib/utils';
-import type { Message } from '@/components/chat/ChatMessage';
+import type { Message, ToolCall } from '@/components/chat/ChatMessage';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -8,7 +8,7 @@ interface ChatState {
   messages: Message[];
   isThinking: boolean;
   conversationId: string | null;
-  
+
   // Actions
   sendMessage: (content: string) => void;
   addMessage: (message: Message) => void;
@@ -51,16 +51,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       if (!response.ok) throw new Error('Failed to get response');
 
-      // Handle streaming response
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      
+
       const assistantMessage: Message = {
         id: generateId(),
         role: 'assistant',
         content: '',
         timestamp: new Date(),
         status: 'streaming',
+        toolCalls: [],
       };
 
       set((state) => ({
@@ -84,6 +84,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
               if (data === '[DONE]') continue;
               try {
                 const parsed = JSON.parse(data);
+
+                // Handle text content
                 if (parsed.content) {
                   set((state) => ({
                     messages: state.messages.map((m) =>
@@ -93,6 +95,36 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     ),
                   }));
                 }
+
+                // Handle tool call events
+                if (parsed.tool_call) {
+                  const tc = parsed.tool_call as ToolCall;
+                  set((state) => ({
+                    messages: state.messages.map((m) => {
+                      if (m.id !== assistantMessage.id) return m;
+                      const existing = (m.toolCalls || []).find(
+                        (t) => t.id === tc.id
+                      );
+                      if (existing) {
+                        // Update existing tool call status
+                        return {
+                          ...m,
+                          toolCalls: (m.toolCalls || []).map((t) =>
+                            t.id === tc.id ? { ...t, ...tc } : t
+                          ),
+                        };
+                      } else {
+                        // Add new tool call
+                        return {
+                          ...m,
+                          toolCalls: [...(m.toolCalls || []), tc],
+                        };
+                      }
+                    }),
+                  }));
+                }
+
+                // Handle conversation ID
                 if (parsed.conversation_id) {
                   set({ conversationId: parsed.conversation_id });
                 }
@@ -111,11 +143,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ),
       }));
     } catch (error) {
-      // On error, add error message
       const errorMessage: Message = {
         id: generateId(),
         role: 'assistant',
-        content: 'I\'m having trouble connecting to the server. Make sure the API is running on port 8000.',
+        content:
+          "I'm having trouble connecting to the server. Make sure the API is running on port 8000.",
         timestamp: new Date(),
         status: 'error',
       };

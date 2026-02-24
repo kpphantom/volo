@@ -1,0 +1,14 @@
+{
+  "name": "volo-desktop-agent",
+  "version": "1.0.0",
+  "description": "Volo Desktop Agent — lets you code from your phone using your machine's power",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "setup": "node setup.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "dotenv": "^16.4.0"
+  }
+}

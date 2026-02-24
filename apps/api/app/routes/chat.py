@@ -61,15 +61,4 @@ async def chat(request: ChatRequest):
     )
 
 
-@router.get("/conversations")
-async def list_conversations():
-    """List all conversations for the current user."""
-    # TODO: Pull from database with auth
-    return {"conversations": []}
-
-
-@router.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str):
-    """Get a specific conversation with messages."""
-    # TODO: Pull from database
-    return {"conversation_id": conversation_id, "messages": []}
+# Conversations moved to app/routes/conversations.py

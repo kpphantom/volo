@@ -1,5 +1,0 @@
-Initial commit - Volo AI Life OS
-
-Monorepo with Turborepo, Next.js 14 frontend, FastAPI backend,
-agent orchestrator, tool framework, memory system, white-label
-engine, and 13+ integration definitions.
