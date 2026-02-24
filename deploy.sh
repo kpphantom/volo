@@ -37,6 +37,9 @@ fi
 echo "✅ Docker: $(docker --version | head -1)"
 echo "✅ Compose: $($COMPOSE version 2>/dev/null | head -1 || echo 'available')"
 
+# Always use --env-file .env.prod for variable interpolation in compose file
+DC="$COMPOSE --env-file .env.prod -f docker-compose.prod.yml"
+
 # ── 2. Check .env.prod file ─────────────────────────────────
 echo ""
 if [ ! -f "$PROJECT_DIR/.env.prod" ]; then
@@ -104,18 +107,18 @@ echo "▶ Building and deploying..."
 cd "$PROJECT_DIR"
 
 # Pull base images
-$COMPOSE -f docker-compose.prod.yml pull postgres redis 2>/dev/null || true
+$DC pull postgres redis 2>/dev/null || true
 
 # Build app images
 echo "🔨 Building API..."
-$COMPOSE -f docker-compose.prod.yml build api
+$DC build api
 
 echo "🔨 Building Web..."
-$COMPOSE -f docker-compose.prod.yml build web
+$DC build web
 
 # Deploy
 echo "🚀 Starting services..."
-$COMPOSE -f docker-compose.prod.yml up -d
+$DC up -d
 
 # ── 5. SSL via system certbot ───────────────────────────────
 echo ""
@@ -142,7 +145,7 @@ echo ""
 echo "▶ Waiting for services..."
 sleep 10
 
-$COMPOSE -f docker-compose.prod.yml ps
+$DC ps
 
 # Check API
 for i in 1 2 3; do
@@ -153,7 +156,7 @@ for i in 1 2 3; do
     fi
     [ "$i" -lt 3 ] && sleep 5
 done
-[ "$API_HEALTH" != "200" ] && echo "⚠️  API: HTTP $API_HEALTH — check: $COMPOSE -f docker-compose.prod.yml logs api"
+[ "$API_HEALTH" != "200" ] && echo "⚠️  API: HTTP $API_HEALTH — check: $DC logs api"
 
 # Check site
 SITE_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "https://$DOMAIN" 2>/dev/null || echo "000")
@@ -175,8 +178,8 @@ echo ""
 echo "  🌐 https://$DOMAIN"
 echo ""
 echo "  Commands:"
-echo "  • Logs:     docker compose -f docker-compose.prod.yml logs -f"
-echo "  • Status:   docker compose -f docker-compose.prod.yml ps"
-echo "  • Restart:  docker compose -f docker-compose.prod.yml restart"
+echo "  • Logs:     docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f"
+echo "  • Status:   docker compose --env-file .env.prod -f docker-compose.prod.yml ps"
+echo "  • Restart:  docker compose --env-file .env.prod -f docker-compose.prod.yml restart"
 echo "  • Redeploy: git pull && bash deploy.sh"
 echo "══════════════════════════════════════════"
