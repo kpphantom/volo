@@ -7,7 +7,6 @@ import {
   Trash2,
   Edit3,
   Calendar,
-  GitBranch,
   Download,
   MoreHorizontal,
 } from 'lucide-react';
@@ -122,21 +121,39 @@ export function ConversationHistory() {
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             placeholder="Search conversations..."
-            className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-blue-500"
+            className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand-500"
           />
         </div>
 
+        {/* Loading Skeleton */}
+        {loading && (
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 animate-pulse">
+                <div className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded bg-[var(--bg-primary)] mt-0.5 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-5 bg-[var(--bg-primary)] rounded w-2/3" />
+                    <div className="h-3 bg-[var(--bg-primary)] rounded w-1/2" />
+                  </div>
+                  <div className="h-4 bg-[var(--bg-primary)] rounded w-20 shrink-0" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* List */}
-        <div className="space-y-2">
+        {!loading && <div className="space-y-2">
           {conversations.map((conv) => (
             <div
               key={conv.id}
               onClick={() => openConversation(conv.id)}
-              className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 hover:border-blue-500/30 transition-colors cursor-pointer group"
+              className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 hover:border-brand-500/30 transition-colors cursor-pointer group"
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <MessageSquare className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
+                  <MessageSquare className="w-5 h-5 text-brand-400 mt-0.5 shrink-0" />
                   <div className="min-w-0 flex-1">
                     {editingId === conv.id ? (
                       <input
@@ -145,7 +162,7 @@ export function ConversationHistory() {
                         onBlur={saveRename}
                         onKeyDown={(e) => e.key === 'Enter' && saveRename()}
                         autoFocus
-                        className="w-full px-2 py-1 bg-[var(--bg-primary)] border border-blue-500 rounded text-sm text-[var(--text-primary)] focus:outline-none"
+                        className="w-full px-2 py-1 bg-[var(--bg-primary)] border border-brand-500 rounded text-sm text-[var(--text-primary)] focus:outline-none"
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
@@ -224,7 +241,7 @@ export function ConversationHistory() {
               <p className="text-sm text-[var(--text-muted)]">Start chatting to create your first conversation.</p>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

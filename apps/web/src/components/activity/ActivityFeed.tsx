@@ -22,7 +22,7 @@ interface ActivityItem {
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
-  chat: <MessageSquare className="w-4 h-4 text-blue-400" />,
+  chat: <MessageSquare className="w-4 h-4 text-brand-400" />,
   tool_execution: <Wrench className="w-4 h-4 text-purple-400" />,
   integration: <ArrowRight className="w-4 h-4 text-green-400" />,
   default: <Activity className="w-4 h-4 text-[var(--text-muted)]" />,
@@ -88,7 +88,7 @@ export function ActivityFeed() {
               onClick={() => setFilter(f)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                 filter === f
-                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
+                  ? 'bg-brand-500/10 text-brand-400 border border-brand-500/30'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-transparent'
               }`}
             >
@@ -97,8 +97,24 @@ export function ActivityFeed() {
           ))}
         </div>
 
+        {/* Loading Skeleton */}
+        {loading && (
+          <div className="space-y-1">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 rounded-lg animate-pulse">
+                <div className="w-4 h-4 rounded bg-[var(--bg-secondary)] mt-0.5 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-[var(--bg-secondary)] rounded w-3/4" />
+                  <div className="h-3 bg-[var(--bg-secondary)] rounded w-1/2" />
+                </div>
+                <div className="h-3 bg-[var(--bg-secondary)] rounded w-16 shrink-0" />
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Timeline */}
-        <div className="space-y-1">
+        {!loading && <div className="space-y-1">
           {filtered.map((item) => (
             <div
               key={item.id}
@@ -124,7 +140,7 @@ export function ActivityFeed() {
               <p className="text-sm text-[var(--text-muted)]">No activity yet</p>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

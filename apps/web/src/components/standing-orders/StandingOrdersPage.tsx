@@ -124,7 +124,7 @@ export function StandingOrdersPage() {
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors text-sm"
           >
             <Plus className="w-4 h-4" /> New Order
           </button>
@@ -143,7 +143,7 @@ export function StandingOrdersPage() {
                   value={formData.name}
                   onChange={(e) => setFormData((d) => ({ ...d, name: e.target.value }))}
                   placeholder="e.g. Morning Briefing"
-                  className="w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand-500"
                 />
               </div>
               <div>
@@ -151,7 +151,7 @@ export function StandingOrdersPage() {
                 <select
                   value={formData.schedule}
                   onChange={(e) => setFormData((d) => ({ ...d, schedule: e.target.value }))}
-                  className="w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:border-brand-500"
                 >
                   {Object.entries(scheduleLabels).map(([cron, label]) => (
                     <option key={cron} value={cron}>
@@ -167,7 +167,7 @@ export function StandingOrdersPage() {
                   onChange={(e) => setFormData((d) => ({ ...d, prompt: e.target.value }))}
                   placeholder="What should Volo do?"
                   rows={3}
-                  className="w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand-500 resize-none"
                 />
               </div>
               <div className="flex gap-2 justify-end">
@@ -180,7 +180,7 @@ export function StandingOrdersPage() {
                 <button
                   onClick={createOrder}
                   disabled={!formData.name || !formData.prompt}
-                  className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-40 transition-colors"
+                  className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-40 transition-colors"
                 >
                   Create
                 </button>
@@ -189,8 +189,27 @@ export function StandingOrdersPage() {
           </div>
         )}
 
+        {/* Loading Skeleton */}
+        {loading && (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 animate-pulse">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-4 h-4 rounded bg-[var(--bg-primary)]" />
+                  <div className="h-5 bg-[var(--bg-primary)] rounded w-40" />
+                </div>
+                <div className="h-4 bg-[var(--bg-primary)] rounded w-3/4 mb-3" />
+                <div className="flex gap-4">
+                  <div className="h-3 bg-[var(--bg-primary)] rounded w-28" />
+                  <div className="h-3 bg-[var(--bg-primary)] rounded w-16" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Orders list */}
-        <div className="space-y-3">
+        {!loading && <div className="space-y-3">
           {orders.map((order) => (
             <div
               key={order.id}
@@ -258,7 +277,7 @@ export function StandingOrdersPage() {
               </p>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

@@ -132,7 +132,7 @@ export function MarketplacePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search plugins..."
-              className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand-500"
             />
           </div>
         </div>
@@ -144,7 +144,7 @@ export function MarketplacePage() {
               onClick={() => setCategory(cat)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                 category === cat
-                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
+                  ? 'bg-brand-500/10 text-brand-400 border border-brand-500/30'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-transparent hover:border-[var(--border)]'
               }`}
             >
@@ -158,7 +158,7 @@ export function MarketplacePage() {
           {filtered.map((plugin) => (
             <div
               key={plugin.id}
-              className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-5 hover:border-blue-500/30 transition-colors"
+              className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-5 hover:border-brand-500/30 transition-colors"
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -188,7 +188,7 @@ export function MarketplacePage() {
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                     plugin.installed
                       ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                      : 'bg-brand-500 text-white hover:bg-brand-600'
                   }`}
                 >
                   {plugin.installed ? (

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, KeyboardEvent, useCallback } from 'react';
-import { Send, Mic, Paperclip, ArrowUp, ArrowDown } from 'lucide-react';
+import { Mic, Paperclip, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ChatMessage, Message } from './ChatMessage';
 import { WelcomeScreen } from './WelcomeScreen';
@@ -47,7 +47,7 @@ export function ChatArea() {
     if (messages.length > 0) {
       scrollToBottom(true);
     }
-  }, [messages.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [messages.length, scrollToBottom]);
 
   // Track scroll position for "scroll to bottom" button
   useEffect(() => {

@@ -125,7 +125,7 @@ export function TopBar({ onToggleSidebar, onOpenCommandPalette }: TopBarProps) {
           <Tooltip content={user?.name || 'Account'}>
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center hover:shadow-lg hover:shadow-brand-500/20 transition-all min-h-[44px] min-w-[44px]"
+              className="w-11 h-11 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center hover:shadow-lg hover:shadow-brand-500/20 transition-all"
               aria-label="User menu"
               aria-expanded={showUserMenu}
               aria-haspopup="true"

@@ -9,7 +9,6 @@ import {
   Shield,
   Save,
   Check,
-  AlertCircle,
   ExternalLink,
   Eye,
   EyeOff,
@@ -421,11 +420,13 @@ function IntegrationsSection() {
 
 function SocialIntegrationsSection() {
   const [socialPlatforms, setSocialPlatforms] = useState<{ id: string; name: string; connected: boolean; username?: string; color: string }[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     api.get<{ platforms: any[] }>('/api/social/connect/status')
       .then((data) => setSocialPlatforms(data.platforms || []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, []);
 
   const handleConnect = async (platformId: string) => {
@@ -494,8 +495,21 @@ function SocialIntegrationsSection() {
             </div>
           </div>
         ))}
-        {socialPlatforms.length === 0 && (
-          <p className="text-sm text-zinc-500 text-center py-4">Loading social platforms...</p>
+        {socialPlatforms.length === 0 && loaded && (
+          <p className="text-sm text-zinc-500 text-center py-4">No social platforms configured</p>
+        )}
+        {!loaded && (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between p-4 rounded-2xl bg-surface-dark-2 border border-white/5 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/5" />
+                  <div className="space-y-1.5"><div className="h-4 bg-white/5 rounded w-24" /><div className="h-3 bg-white/5 rounded w-16" /></div>
+                </div>
+                <div className="h-5 bg-white/5 rounded-full w-20" />
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -504,11 +518,13 @@ function SocialIntegrationsSection() {
 
 function MessagingIntegrationsSection() {
   const [messagingPlatforms, setMessagingPlatforms] = useState<{ id: string; name: string; connected: boolean; icon: string; color: string }[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     api.get<{ platforms: any[] }>('/api/messages/platforms')
       .then((data) => setMessagingPlatforms(data.platforms || []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, []);
 
   const platformEmojis: Record<string, string> = {
@@ -543,8 +559,21 @@ function MessagingIntegrationsSection() {
             </span>
           </div>
         ))}
-        {messagingPlatforms.length === 0 && (
-          <p className="text-sm text-zinc-500 text-center py-4">Loading messaging platforms...</p>
+        {messagingPlatforms.length === 0 && loaded && (
+          <p className="text-sm text-zinc-500 text-center py-4">No messaging platforms configured</p>
+        )}
+        {!loaded && (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between p-4 rounded-2xl bg-surface-dark-2 border border-white/5 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/5" />
+                  <div className="space-y-1.5"><div className="h-4 bg-white/5 rounded w-24" /><div className="h-3 bg-white/5 rounded w-16" /></div>
+                </div>
+                <div className="h-5 bg-white/5 rounded-full w-20" />
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

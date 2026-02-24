@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
 
-import { api, API_URL } from '@/lib/api';
+import { api } from '@/lib/api';
 
 interface SystemStatus {
   api: 'online' | 'offline' | 'checking';

@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export type Page =
   | 'chat'
@@ -31,13 +32,21 @@ interface AppState {
   setCommandPaletteOpen: (open: boolean) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  currentPage: 'chat',
-  sidebarOpen: true,
-  commandPaletteOpen: false,
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      currentPage: 'chat',
+      sidebarOpen: true,
+      commandPaletteOpen: false,
 
-  setPage: (page) => set({ currentPage: page }),
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
-}));
+      setPage: (page) => set({ currentPage: page }),
+      toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+      setSidebarOpen: (open) => set({ sidebarOpen: open }),
+      setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+    }),
+    {
+      name: 'volo-app-state',
+      partialize: (state) => ({ currentPage: state.currentPage }),
+    }
+  )
+);

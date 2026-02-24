@@ -262,7 +262,7 @@ export function DocsPage() {
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
                 activeSection === section.id
-                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
+                  ? 'bg-brand-500/10 text-brand-400 border border-brand-500/30'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-transparent'
               }`}
             >
@@ -281,7 +281,7 @@ export function DocsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search docs..."
-            className="w-full pl-9 pr-3 py-2 text-sm bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-blue-500"
+            className="w-full pl-9 pr-3 py-2 text-sm bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand-500"
           />
         </div>
 
@@ -295,7 +295,7 @@ export function DocsPage() {
                 }}
                 className={`flex items-center gap-2 text-sm font-medium w-full text-left px-2 py-1.5 rounded-lg transition-colors ${
                   activeSection === section.id
-                    ? 'text-blue-400'
+                    ? 'text-brand-400'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
@@ -310,7 +310,7 @@ export function DocsPage() {
                       onClick={() => setActiveItem(item.id)}
                       className={`block text-xs w-full text-left px-2 py-1.5 rounded transition-colors ${
                         activeItem === item.id
-                          ? 'text-blue-400 bg-blue-500/10'
+                          ? 'text-brand-400 bg-brand-500/10'
                           : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                       }`}
                     >
@@ -340,6 +340,33 @@ export function DocsPage() {
                 style={{ fontFamily: 'inherit' }}
               >
                 {(() => {
+                  // Inline markdown formatter
+                  const formatInline = (text: string): React.ReactNode[] => {
+                    const parts: React.ReactNode[] = [];
+                    // Match **bold**, `code`, [link](url)
+                    const regex = /(\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
+                    let lastIndex = 0;
+                    let match: RegExpExecArray | null;
+                    let key = 0;
+                    while ((match = regex.exec(text)) !== null) {
+                      if (match.index > lastIndex) {
+                        parts.push(text.slice(lastIndex, match.index));
+                      }
+                      if (match[2]) {
+                        parts.push(<strong key={key++} className="font-semibold text-[var(--text-primary)]">{match[2]}</strong>);
+                      } else if (match[3]) {
+                        parts.push(<code key={key++} className="px-1.5 py-0.5 rounded bg-white/10 text-brand-400 text-xs font-mono">{match[3]}</code>);
+                      } else if (match[4] && match[5]) {
+                        parts.push(<a key={key++} href={match[5]} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:underline">{match[4]}</a>);
+                      }
+                      lastIndex = match.index + match[0].length;
+                    }
+                    if (lastIndex < text.length) {
+                      parts.push(text.slice(lastIndex));
+                    }
+                    return parts.length > 0 ? parts : [text];
+                  };
+
                   const lines = currentItem.content.split('\n');
                   const elements: React.ReactNode[] = [];
                   let inCodeBlock = false;
@@ -376,17 +403,17 @@ export function DocsPage() {
                       return;
                     }
                     if (line.startsWith('# '))
-                      elements.push(<h1 key={i} className="text-2xl font-bold mb-4 mt-6">{line.slice(2)}</h1>);
+                      elements.push(<h1 key={i} className="text-2xl font-bold mb-4 mt-6">{formatInline(line.slice(2))}</h1>);
                     else if (line.startsWith('## '))
-                      elements.push(<h2 key={i} className="text-xl font-semibold mb-3 mt-5">{line.slice(3)}</h2>);
+                      elements.push(<h2 key={i} className="text-xl font-semibold mb-3 mt-5">{formatInline(line.slice(3))}</h2>);
                     else if (line.startsWith('### '))
-                      elements.push(<h3 key={i} className="text-lg font-medium mb-2 mt-4">{line.slice(4)}</h3>);
+                      elements.push(<h3 key={i} className="text-lg font-medium mb-2 mt-4">{formatInline(line.slice(4))}</h3>);
                     else if (line.startsWith('- '))
-                      elements.push(<li key={i} className="text-sm text-[var(--text-secondary)] ml-4 mb-1">{line.slice(2)}</li>);
+                      elements.push(<li key={i} className="text-sm text-[var(--text-secondary)] ml-4 mb-1">{formatInline(line.slice(2))}</li>);
                     else if (line.startsWith('|'))
                       elements.push(<p key={i} className="text-sm font-mono text-[var(--text-secondary)]">{line}</p>);
                     else
-                      elements.push(<p key={i} className="text-sm text-[var(--text-secondary)] mb-2">{line}</p>);
+                      elements.push(<p key={i} className="text-sm text-[var(--text-secondary)] mb-2">{formatInline(line)}</p>);
                   });
                   return elements;
                 })()}

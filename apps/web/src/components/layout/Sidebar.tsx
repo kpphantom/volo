@@ -5,7 +5,6 @@ import {
   MessageSquare,
   Plus,
   Settings,
-  Zap,
   Code,
   TrendingUp,
   Mail,

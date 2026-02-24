@@ -152,15 +152,6 @@ export function VSCodePage() {
   const user = useAuthStore((s) => s.user);
   const userId = user?.id || '';
 
-  // Don't render anything until we have a real user
-  if (!userId) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-sm text-zinc-500">Loading user...</p>
-      </div>
-    );
-  }
-
   const [view, setView] = useState<PageView>('setup');
   const [agentOnline, setAgentOnline] = useState(false);
   const [agentKey, setAgentKey] = useState<string | null>(null);
@@ -179,6 +170,15 @@ export function VSCodePage() {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Don't render anything until we have a real user
+  if (!userId) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-sm text-zinc-500">Loading user...</p>
+      </div>
+    );
+  }
 
   const activeSession = sessions.find((s) => s.session_id === activeSessionId) || null;
 

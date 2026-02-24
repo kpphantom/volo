@@ -102,7 +102,7 @@ export function AnalyticsDashboard() {
                 onClick={() => setTimeRange(range)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                   timeRange === range
-                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
+                    ? 'bg-brand-500/10 text-brand-400 border border-brand-500/30'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-transparent'
                 }`}
               >
@@ -118,7 +118,38 @@ export function AnalyticsDashboard() {
           </div>
         </div>
 
+        {/* Loading Skeleton */}
+        {loading && (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 animate-pulse">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-5 h-5 rounded bg-[var(--bg-primary)]" />
+                    <div className="w-10 h-3 rounded bg-[var(--bg-primary)]" />
+                  </div>
+                  <div className="h-8 bg-[var(--bg-primary)] rounded w-20 mb-1" />
+                  <div className="h-3 bg-[var(--bg-primary)] rounded w-24" />
+                </div>
+              ))}
+            </div>
+            <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-6 mb-8 animate-pulse">
+              <div className="h-6 bg-[var(--bg-primary)] rounded w-32 mb-4" />
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-4">
+                    <div className="h-4 bg-[var(--bg-primary)] rounded w-40" />
+                    <div className="flex-1 h-2 bg-[var(--bg-primary)] rounded-full" />
+                    <div className="h-3 bg-[var(--bg-primary)] rounded w-12" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Stats Cards */}
+        {!loading && <>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {stats.map((stat) => (
             <div
@@ -145,7 +176,7 @@ export function AnalyticsDashboard() {
         {/* Tool Usage */}
         <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-6 mb-8">
           <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-            <Layers className="w-5 h-5 text-blue-400" />
+            <Layers className="w-5 h-5 text-brand-400" />
             Tool Usage
           </h2>
           <div className="space-y-3">
@@ -156,7 +187,7 @@ export function AnalyticsDashboard() {
                 </span>
                 <div className="flex-1 h-2 bg-[var(--bg-primary)] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-blue-500 rounded-full transition-all"
+                    className="h-full bg-brand-500 rounded-full transition-all"
                     style={{ width: `${tool.percentage}%` }}
                   />
                 </div>
@@ -181,7 +212,7 @@ export function AnalyticsDashboard() {
               return (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
                   <div
-                    className="w-full bg-blue-500/30 hover:bg-blue-500/50 rounded-t transition-colors"
+                    className="w-full bg-brand-500/30 hover:bg-brand-500/50 rounded-t transition-colors"
                     style={{ height: `${Math.max(height, 2)}%` }}
                   />
                 </div>
@@ -193,6 +224,7 @@ export function AnalyticsDashboard() {
             <span>Today</span>
           </div>
         </div>
+        </>}
       </div>
     </div>
   );

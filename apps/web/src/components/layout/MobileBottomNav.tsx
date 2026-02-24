@@ -43,7 +43,7 @@ export function MobileBottomNav() {
               key={item.id}
               onClick={() => setPage(item.id)}
               className={cn(
-                'flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all min-w-[60px] min-h-[48px] active:scale-95 tap-none relative',
+                'flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl transition-all min-w-0 flex-1 min-h-[48px] active:scale-95 tap-none relative',
                 active
                   ? 'text-brand-400'
                   : 'text-zinc-500 active:text-zinc-300'
@@ -65,7 +65,7 @@ export function MobileBottomNav() {
         <button
           onClick={() => setPage('settings')}
           className={cn(
-            'flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all min-w-[60px] min-h-[48px]',
+            'flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl transition-all min-w-0 flex-1 min-h-[48px]',
             currentPage === 'settings' ? 'text-brand-400' : 'text-zinc-500 active:text-zinc-300'
           )}
           aria-label="Settings"
