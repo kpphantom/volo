@@ -2,6 +2,7 @@
 VOLO — Database Models & Initialization
 """
 
+import os
 import uuid
 from datetime import datetime
 
@@ -11,6 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.pool import NullPool
 from pgvector.sqlalchemy import Vector
 
 from app.config import settings
@@ -253,14 +255,18 @@ class AuditLog(Base):
 
 # ---- Engine & Session ----
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=False,
-    pool_size=20,
-    max_overflow=10,
-    pool_recycle=3600,
-    pool_pre_ping=True,
-)
+if os.environ.get("TESTING") == "1":
+    # NullPool prevents cross-event-loop connection reuse in pytest
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+else:
+    engine = create_async_engine(
+        settings.database_url,
+        echo=False,
+        pool_size=20,
+        max_overflow=10,
+        pool_recycle=3600,
+        pool_pre_ping=True,
+    )
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
