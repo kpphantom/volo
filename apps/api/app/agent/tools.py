@@ -13,6 +13,7 @@ from app.services.slack import SlackService
 from app.services.social import SocialService
 from app.services.machine import MachineService
 from app.services.web3 import Web3Service
+from app.services.plaid_service import plaid_service
 from app.agent.memory import MemoryManager
 
 
@@ -440,6 +441,75 @@ class ToolRegistry:
             handler=self._handle_web3_gas_price,
         ))
 
+        # =====================================================================
+        # FINANCE / PLAID TOOLS
+        # =====================================================================
+        self.register(Tool(
+            name="finance_get_balances",
+            description="Get the user's bank account balances including checking, savings, and credit cards. Shows current balance and available balance per account.",
+            parameters={},
+            category="finance",
+            handler=self._handle_finance_get_balances,
+        ))
+
+        self.register(Tool(
+            name="finance_get_transactions",
+            description="Get recent bank transactions. Shows merchant name, amount, date, and category for each transaction.",
+            parameters={
+                "days": {"type": "integer", "description": "Number of days of history (default 30, max 90)"},
+                "count": {"type": "integer", "description": "Max transactions to return (default 20)"},
+            },
+            category="finance",
+            handler=self._handle_finance_get_transactions,
+        ))
+
+        self.register(Tool(
+            name="finance_spending_breakdown",
+            description="Get a spending breakdown by category (food, rent, entertainment, shopping, etc.) for a time period. Shows total spent, income, net savings, and per-category amounts with percentages.",
+            parameters={
+                "days": {"type": "integer", "description": "Number of days to analyze (default 30)"},
+            },
+            category="finance",
+            handler=self._handle_finance_spending_breakdown,
+        ))
+
+        self.register(Tool(
+            name="finance_overview",
+            description="Get a complete finance overview — accounts, balances, spending breakdown, recent transactions, and budget status. Best tool for a general financial summary.",
+            parameters={},
+            category="finance",
+            handler=self._handle_finance_overview,
+        ))
+
+        # =====================================================================
+        # ENHANCED CALENDAR & EMAIL TOOLS
+        # =====================================================================
+        self.register(Tool(
+            name="calendar_find_free_slots",
+            description="Find available free time slots in the user's calendar. Useful for scheduling meetings.",
+            parameters={
+                "days": {"type": "integer", "description": "Days ahead to search (default 3)"},
+                "duration_minutes": {"type": "integer", "description": "Required slot duration in minutes (default 30)"},
+            },
+            category="communication",
+            handler=self._handle_calendar_find_free_slots,
+        ))
+
+        self.register(Tool(
+            name="email_triage",
+            description="Triage the user's inbox — get unread or important emails that need attention. Returns prioritized list with subject, sender, and snippet.",
+            parameters={
+                "filter": {
+                    "type": "string",
+                    "enum": ["unread", "important", "needs_reply", "all"],
+                    "description": "Which emails to show",
+                },
+                "limit": {"type": "integer", "description": "Max emails (default 10)"},
+            },
+            category="communication",
+            handler=self._handle_email_triage,
+        ))
+
     # =========================================================================
     # HANDLER IMPLEMENTATIONS
     # =========================================================================
@@ -602,3 +672,124 @@ class ToolRegistry:
 
     async def _handle_web3_gas_price(self, **kwargs) -> dict:
         return await self.web3.get_gas_price(chain=kwargs["chain"])
+
+    # =========================================================================
+    # FINANCE / PLAID HANDLERS
+    # =========================================================================
+
+    async def _handle_finance_get_balances(self, **kwargs) -> dict:
+        # Try real Plaid data first, fall back to demo
+        from app.database import SessionLocal
+        from app.models import Integration
+        try:
+            async with SessionLocal() as db:
+                from sqlalchemy import select
+                result = await db.execute(
+                    select(Integration).where(
+                        Integration.type == "plaid"
+                    ).limit(1)
+                )
+                integration = result.scalar_one_or_none()
+                if integration and integration.config:
+                    access_token = integration.config.get("access_token")
+                    if access_token:
+                        return await plaid_service.get_balances(access_token)
+        except Exception:
+            pass
+        # Return demo data
+        demo = plaid_service.get_demo_data()
+        return {
+            "accounts": demo["accounts"],
+            "total_current": demo["total_current"],
+            "total_available": demo["total_available"],
+            "is_demo": True,
+        }
+
+    async def _handle_finance_get_transactions(self, **kwargs) -> dict:
+        days = min(kwargs.get("days", 30), 90)
+        count = min(kwargs.get("count", 20), 100)
+        from app.database import SessionLocal
+        from app.models import Integration
+        try:
+            async with SessionLocal() as db:
+                from sqlalchemy import select
+                result = await db.execute(
+                    select(Integration).where(
+                        Integration.type == "plaid"
+                    ).limit(1)
+                )
+                integration = result.scalar_one_or_none()
+                if integration and integration.config:
+                    access_token = integration.config.get("access_token")
+                    if access_token:
+                        return await plaid_service.get_transactions(access_token, days=days, count=count)
+        except Exception:
+            pass
+        demo = plaid_service.get_demo_data()
+        return {"transactions": demo["transactions"][:count], "is_demo": True}
+
+    async def _handle_finance_spending_breakdown(self, **kwargs) -> dict:
+        days = min(kwargs.get("days", 30), 90)
+        from app.database import SessionLocal
+        from app.models import Integration
+        try:
+            async with SessionLocal() as db:
+                from sqlalchemy import select
+                result = await db.execute(
+                    select(Integration).where(
+                        Integration.type == "plaid"
+                    ).limit(1)
+                )
+                integration = result.scalar_one_or_none()
+                if integration and integration.config:
+                    access_token = integration.config.get("access_token")
+                    if access_token:
+                        return await plaid_service.get_spending_breakdown(access_token, days=days)
+        except Exception:
+            pass
+        demo = plaid_service.get_demo_data()
+        return {**demo["spending"], "is_demo": True}
+
+    async def _handle_finance_overview(self, **kwargs) -> dict:
+        from app.database import SessionLocal
+        from app.models import Integration
+        try:
+            async with SessionLocal() as db:
+                from sqlalchemy import select
+                result = await db.execute(
+                    select(Integration).where(
+                        Integration.type == "plaid"
+                    ).limit(1)
+                )
+                integration = result.scalar_one_or_none()
+                if integration and integration.config:
+                    access_token = integration.config.get("access_token")
+                    if access_token:
+                        balances = await plaid_service.get_balances(access_token)
+                        spending = await plaid_service.get_spending_breakdown(access_token)
+                        txns = await plaid_service.get_transactions(access_token, count=10)
+                        return {
+                            **balances,
+                            "spending": spending,
+                            "recent_transactions": txns.get("transactions", [])[:10],
+                            "is_demo": False,
+                        }
+        except Exception:
+            pass
+        return {**plaid_service.get_demo_data(), "is_demo": True}
+
+    # =========================================================================
+    # ENHANCED CALENDAR & EMAIL HANDLERS
+    # =========================================================================
+
+    async def _handle_calendar_find_free_slots(self, **kwargs) -> dict:
+        return await self.calendar.find_free_slots(
+            days_ahead=kwargs.get("days", 3),
+            duration_minutes=kwargs.get("duration_minutes", 30),
+        )
+
+    async def _handle_email_triage(self, **kwargs) -> dict:
+        return await self.email.list_inbox(
+            filter_type=kwargs.get("filter", "unread"),
+            limit=kwargs.get("limit", 10),
+        )

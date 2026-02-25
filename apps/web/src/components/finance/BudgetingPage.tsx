@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useTranslation } from '@/lib/i18n';
+import { toast } from 'sonner';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,7 @@ export function BudgetingPage() {
   const [editingBudget, setEditingBudget] = useState<string | null>(null);
   const [budgetInput, setBudgetInput] = useState('');
   const [savingBudget, setSavingBudget] = useState(false);
+  const [linkLoading, setLinkLoading] = useState(false);
   const { t } = useTranslation();
 
   const fetchData = useCallback(async () => {
@@ -138,6 +140,60 @@ export function BudgetingPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Plaid Link — opens Plaid Link drop-in widget via CDN
+  const handleConnectBank = useCallback(async () => {
+    setLinkLoading(true);
+    try {
+      const { link_token } = await api.get<{ link_token: string }>('/api/finance/plaid/link-token');
+      if (!link_token) {
+        toast.error('Plaid not configured. Set PLAID_CLIENT_ID and PLAID_SECRET in your .env');
+        return;
+      }
+
+      // Load Plaid Link SDK dynamically
+      const existingScript = document.getElementById('plaid-link-sdk');
+      const loadScript = (): Promise<void> =>
+        new Promise((resolve, reject) => {
+          if (existingScript && (window as any).Plaid) { resolve(); return; }
+          const script = document.createElement('script');
+          script.id = 'plaid-link-sdk';
+          script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error('Failed to load Plaid SDK'));
+          document.head.appendChild(script);
+        });
+
+      await loadScript();
+
+      const Plaid = (window as any).Plaid;
+      if (!Plaid) { toast.error('Plaid SDK failed to load'); return; }
+
+      const handler = Plaid.create({
+        token: link_token,
+        onSuccess: async (publicToken: string, metadata: any) => {
+          try {
+            await api.post('/api/finance/plaid/exchange', {
+              public_token: publicToken,
+              institution_name: metadata?.institution?.name ?? 'Bank',
+            });
+            toast.success('Bank account connected!');
+            fetchData();
+          } catch {
+            toast.error('Failed to link account');
+          }
+        },
+        onExit: (err: any) => {
+          if (err) toast.error('Plaid Link exited with error');
+        },
+      });
+      handler.open();
+    } catch {
+      toast.error('Could not start Plaid Link — check API configuration');
+    } finally {
+      setLinkLoading(false);
+    }
+  }, [fetchData]);
 
   const handleSaveBudget = async (category: string) => {
     const limit = parseFloat(budgetInput);
@@ -226,6 +282,16 @@ export function BudgetingPage() {
                 <Info className="w-3.5 h-3.5" />
                 Demo Mode
               </span>
+            )}
+            {data.is_demo && (
+              <button
+                onClick={handleConnectBank}
+                disabled={linkLoading}
+                className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {linkLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Landmark className="w-4 h-4" />}
+                Connect Bank
+              </button>
             )}
             <button
               onClick={fetchData}
