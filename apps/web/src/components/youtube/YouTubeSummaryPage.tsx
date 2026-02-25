@@ -303,9 +303,9 @@ export function YouTubeSummaryPage() {
               className="space-y-4"
             >
               {/* Video Card */}
-              <div className="flex gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+              <div className="flex flex-col sm:flex-row gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/5">
                 {result.video.thumbnail && (
-                  <div className="relative flex-shrink-0 w-48 h-28 rounded-xl overflow-hidden">
+                  <div className="relative flex-shrink-0 w-full sm:w-48 h-40 sm:h-28 rounded-xl overflow-hidden">
                     <img
                       src={result.video.thumbnail}
                       alt={result.video.title}

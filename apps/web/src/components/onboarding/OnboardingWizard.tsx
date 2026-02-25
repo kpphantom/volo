@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -51,6 +51,17 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const [connectedAccounts, setConnectedAccounts] = useState<Record<string, boolean>>({});
   const [connectingAccount, setConnectingAccount] = useState<string | null>(null);
   const { updateUser, completeOnboarding } = useAuthStore();
+  const pollRef = useRef<{ interval: NodeJS.Timeout; timeout: NodeJS.Timeout } | null>(null);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current.interval);
+        clearTimeout(pollRef.current.timeout);
+      }
+    };
+  }, []);
 
   // Check which accounts are already connected
   const refreshConnectionStatus = useCallback(async () => {
@@ -86,9 +97,11 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
         data = await api.get<{ url: string }>('/api/auth/github');
         window.open(data.url, '_blank', 'width=500,height=700');
       }
-      // Listen for popup callback
-      const checkInterval = setInterval(() => { refreshConnectionStatus(); }, 3000);
-      setTimeout(() => clearInterval(checkInterval), 60000);
+      // Listen for popup callback — clear interval when component unmounts or connection succeeds
+      if (pollRef.current) { clearInterval(pollRef.current.interval); clearTimeout(pollRef.current.timeout); }
+      const interval = setInterval(() => { refreshConnectionStatus(); }, 3000);
+      const timeout = setTimeout(() => clearInterval(interval), 60000);
+      pollRef.current = { interval, timeout };
     } catch {
       toast.error(`Could not start ${provider} connection`);
     } finally {

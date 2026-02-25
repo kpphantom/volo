@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { ToasterThemeSync } from '@/components/providers/ToasterThemeSync';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -41,18 +42,7 @@ export default function RootLayout({
         <ThemeProvider>
           {children}
         </ThemeProvider>
-        <Toaster
-          theme="dark"
-          position="bottom-right"
-          toastOptions={{
-            style: {
-              background: '#18181b',
-              border: '1px solid rgba(255,255,255,0.05)',
-              color: '#e4e4e7',
-              fontSize: '13px',
-            },
-          }}
-        />
+        <ToasterThemeSync />
       </body>
     </html>
   );

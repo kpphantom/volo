@@ -46,7 +46,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'volo-app-state',
-      partialize: (state) => ({ currentPage: state.currentPage }),
+      partialize: (state) => ({ currentPage: state.currentPage, sidebarOpen: state.sidebarOpen }),
     }
   )
 );

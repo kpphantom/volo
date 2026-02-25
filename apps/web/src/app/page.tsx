@@ -164,6 +164,9 @@ export default function HomePage() {
       )}
 
       <div className="flex h-screen-safe overflow-hidden">
+        {/* Skip to content link for accessibility */}
+        <a href="#main-content" className="skip-to-content">Skip to content</a>
+
         {/* Mobile overlay */}
         {sidebarOpen && (
           <div
@@ -186,7 +189,7 @@ export default function HomePage() {
             onToggleSidebar={toggleSidebar}
             onOpenCommandPalette={() => setCommandPaletteOpen(true)}
           />
-          <main role="main" aria-label="Page content" className="flex-1 flex flex-col min-h-0">
+          <main id="main-content" role="main" aria-label="Page content" className="flex-1 flex flex-col min-h-0">
             <ErrorBoundary>
               {currentPage === 'chat' && <ChatArea />}
               <Suspense fallback={<PageSkeleton />}>

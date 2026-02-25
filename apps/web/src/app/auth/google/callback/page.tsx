@@ -43,9 +43,9 @@ export default function GoogleCallbackPage() {
             ? `Connected as ${data.profile.email}!`
             : 'Google account connected!'
         );
-        // Notify parent window
+        // Notify parent window (restrict to same origin)
         if (window.opener) {
-          window.opener.postMessage({ type: 'google-connected', success: true }, '*');
+          window.opener.postMessage({ type: 'google-connected', success: true }, window.location.origin);
         }
         setTimeout(() => window.close(), 1500);
       })
@@ -53,7 +53,7 @@ export default function GoogleCallbackPage() {
         setStatus('error');
         setMessage(err?.message || 'Failed to connect Google account.');
         if (window.opener) {
-          window.opener.postMessage({ type: 'google-connected', success: false }, '*');
+          window.opener.postMessage({ type: 'google-connected', success: false }, window.location.origin);
         }
         setTimeout(() => window.close(), 3000);
       });

@@ -62,6 +62,16 @@ export function CodeEditor({
     }
   }, [code, readOnly]);
 
+  // Escape key exits fullscreen
+  useEffect(() => {
+    if (!expanded) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpanded(false);
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [expanded]);
+
   return (
     <div
       className={`bg-[#0d1117] border border-[var(--border)] rounded-xl overflow-hidden ${

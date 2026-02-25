@@ -273,19 +273,40 @@ export function DocsPage() {
         </div>
       </div>
 
+      {/* Mobile Item Selector (visible when section selected) */}
+      {currentSection && currentSection.items.length > 1 && (
+        <div className="md:hidden border-b border-[var(--border)] px-4 py-1.5 overflow-x-auto">
+          <div className="flex gap-1.5">
+            {currentSection.items.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveItem(item.id)}
+                className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap transition-colors ${
+                  activeItem === item.id
+                    ? 'bg-brand-500/10 text-brand-400'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                }`}
+              >
+                {item.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Desktop Sidebar */}
-      <div className="w-64 border-r border-[var(--border)] overflow-y-auto p-4 hidden md:block">
+      <div className="hidden md:block w-64 border-r border-[var(--border)] overflow-y-auto p-4">
         <div className="relative mb-4">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
           <input
+            type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search docs..."
-            className="w-full pl-9 pr-3 py-2 text-sm bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand-500"
+            className="w-full pl-9 pr-3 py-2 text-sm bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-brand-500/50"
           />
         </div>
-
-        <nav className="space-y-4">
+        <nav className="space-y-1">
           {filteredDocs.map((section) => (
             <div key={section.id}>
               <button
@@ -293,9 +314,9 @@ export function DocsPage() {
                   setActiveSection(section.id);
                   setActiveItem(section.items[0].id);
                 }}
-                className={`flex items-center gap-2 text-sm font-medium w-full text-left px-2 py-1.5 rounded-lg transition-colors ${
+                className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
                   activeSection === section.id
-                    ? 'text-brand-400'
+                    ? 'text-brand-400 bg-brand-500/10 font-medium'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
@@ -325,7 +346,7 @@ export function DocsPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-8">
         <div className="max-w-3xl mx-auto">
           {currentItem ? (
             <div className="prose prose-invert max-w-none">
