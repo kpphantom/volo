@@ -22,31 +22,33 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore, type Page } from '@/stores/appStore';
+import { useTranslation } from '@/lib/i18n';
 
-const mobileNavItems: { id: Page; icon: typeof MessageSquare; label: string }[] = [
-  { id: 'chat', icon: MessageSquare, label: 'Chat' },
-  { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
-  { id: 'messages', icon: MessagesSquare, label: 'Messages' },
-  { id: 'social', icon: Share2, label: 'Social' },
+const mobileNavItems: { id: Page; icon: typeof MessageSquare; labelKey: string }[] = [
+  { id: 'chat', icon: MessageSquare, labelKey: 'nav.chat' },
+  { id: 'dashboard', icon: LayoutDashboard, labelKey: 'nav.home' },
+  { id: 'messages', icon: MessagesSquare, labelKey: 'nav.messages' },
+  { id: 'social', icon: Share2, labelKey: 'nav.social' },
 ];
 
-const moreMenuItems: { id: Page; icon: typeof Settings; label: string }[] = [
-  { id: 'settings', icon: Settings, label: 'Settings' },
-  { id: 'conversations', icon: History, label: 'History' },
-  { id: 'standing-orders', icon: Clock, label: 'Standing Orders' },
-  { id: 'activity', icon: Activity, label: 'Activity' },
-  { id: 'analytics', icon: BarChart3, label: 'Analytics' },
-  { id: 'google', icon: Chrome, label: 'Google' },
-  { id: 'youtube', icon: Youtube, label: 'YouTube' },
-  { id: 'health', icon: Heart, label: 'Health' },
-  { id: 'vscode', icon: Terminal, label: 'VS Code' },
-  { id: 'marketplace', icon: Package, label: 'Marketplace' },
-  { id: 'docs', icon: BookOpen, label: 'Docs' },
+const moreMenuItems: { id: Page; icon: typeof Settings; labelKey: string }[] = [
+  { id: 'settings', icon: Settings, labelKey: 'nav.settings' },
+  { id: 'conversations', icon: History, labelKey: 'nav.history' },
+  { id: 'standing-orders', icon: Clock, labelKey: 'nav.standingOrders' },
+  { id: 'activity', icon: Activity, labelKey: 'nav.activity' },
+  { id: 'analytics', icon: BarChart3, labelKey: 'nav.analytics' },
+  { id: 'google', icon: Chrome, labelKey: 'nav.google' },
+  { id: 'youtube', icon: Youtube, labelKey: 'nav.youtube' },
+  { id: 'health', icon: Heart, labelKey: 'nav.health' },
+  { id: 'vscode', icon: Terminal, labelKey: 'nav.vscode' },
+  { id: 'marketplace', icon: Package, labelKey: 'nav.marketplace' },
+  { id: 'docs', icon: BookOpen, labelKey: 'nav.docs' },
 ];
 
 export function MobileBottomNav() {
   const { currentPage, setPage } = useAppStore();
   const [moreOpen, setMoreOpen] = useState(false);
+  const { t } = useTranslation();
 
   // Hide on chat page — the chat input handles its own bottom-of-screen positioning
   if (currentPage === 'chat') return null;
@@ -61,7 +63,7 @@ export function MobileBottomNav() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-white">All Features</h3>
+              <h3 className="text-sm font-semibold text-white">{t('menu.allFeatures')}</h3>
               <button
                 onClick={() => setMoreOpen(false)}
                 className="p-2 rounded-full hover:bg-white/10 transition-colors"
@@ -85,7 +87,7 @@ export function MobileBottomNav() {
                     )}
                   >
                     <item.icon className="w-5 h-5" />
-                    <span className="text-[11px] font-medium text-center leading-tight">{item.label}</span>
+                    <span className="text-[11px] font-medium text-center leading-tight">{t(item.labelKey as any)}</span>
                   </button>
                 );
               })}
@@ -113,12 +115,12 @@ export function MobileBottomNav() {
                     ? 'text-brand-400'
                     : 'text-zinc-500 active:text-zinc-300'
                 )}
-                aria-label={item.label}
+                aria-label={t(item.labelKey as any)}
                 aria-current={active ? 'page' : undefined}
               >
                 <item.icon className={cn('w-5 h-5', active && 'drop-shadow-[0_0_6px_rgba(92,124,250,0.5)]')} />
                 <span className={cn('text-[11px] font-medium', active ? 'text-brand-400' : 'text-zinc-500')}>
-                  {item.label}
+                  {t(item.labelKey as any)}
                 </span>
                 {active && (
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-brand-500" />
@@ -137,7 +139,7 @@ export function MobileBottomNav() {
           >
             <Grid3X3 className="w-5 h-5" />
             <span className={cn('text-[11px] font-medium', moreOpen ? 'text-brand-400' : 'text-zinc-500')}>
-              More
+              {t('nav.more')}
             </span>
           </button>
         </div>

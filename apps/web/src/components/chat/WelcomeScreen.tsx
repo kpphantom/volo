@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
+import { useTranslation } from '@/lib/i18n';
 
 interface WelcomeScreenProps {
   onSuggestionClick: (text: string) => void;
@@ -25,38 +26,38 @@ interface WelcomeScreenProps {
 const suggestions = [
   {
     icon: Sparkles,
-    title: 'Get started',
-    description: 'Set up my integrations and configure Volo',
+    titleKey: 'suggestion.getStarted' as const,
+    descKey: 'suggestion.getStarted.desc' as const,
     prompt: "Let's get started — help me set up Volo with all my tools and accounts.",
   },
   {
     icon: Code,
-    title: 'My projects',
-    description: 'Connect GitHub and index all my repositories',
+    titleKey: 'suggestion.projects' as const,
+    descKey: 'suggestion.projects.desc' as const,
     prompt: 'Connect to my GitHub and show me an overview of all my projects.',
   },
   {
     icon: TrendingUp,
-    title: 'Trading',
-    description: 'Set up portfolio tracking and market alerts',
+    titleKey: 'suggestion.trading' as const,
+    descKey: 'suggestion.trading.desc' as const,
     prompt: 'Help me set up my trading integrations — brokerage, crypto, and market data.',
   },
   {
     icon: Mail,
-    title: 'Communications',
-    description: 'Connect email, calendar, and messaging',
+    titleKey: 'suggestion.comms' as const,
+    descKey: 'suggestion.comms.desc' as const,
     prompt: 'Connect my email and calendar so you can help me manage communications.',
   },
   {
     icon: Terminal,
-    title: 'Machine access',
-    description: 'Let Volo run tasks on your computers',
+    titleKey: 'suggestion.machine' as const,
+    descKey: 'suggestion.machine.desc' as const,
     prompt: 'Set up remote machine access so you can execute tasks on my laptop.',
   },
   {
     icon: Calendar,
-    title: 'Morning briefing',
-    description: 'Get a daily summary of everything that matters',
+    titleKey: 'suggestion.briefing' as const,
+    descKey: 'suggestion.briefing.desc' as const,
     prompt: 'Give me my morning briefing — calendar, tasks, markets, messages.',
   },
 ];
@@ -64,17 +65,18 @@ const suggestions = [
 export function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
   const [status, setStatus] = useState({ apiOnline: false, integrations: 0, memories: 0 });
   const user = useAuthStore((s) => s.user);
+  const { t } = useTranslation();
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     const firstName = user?.name?.split(' ')[0] || '';
     const name = firstName ? `, ${firstName}` : '';
-    if (hour < 6) return { text: `Still up${name}?`, icon: Moon, sub: 'The night is yours — let\'s get things done.' };
-    if (hour < 12) return { text: `Good morning${name}`, icon: Sunrise, sub: 'Ready to make today count.' };
-    if (hour < 17) return { text: `Good afternoon${name}`, icon: Sun, sub: 'What are we working on?' };
-    if (hour < 21) return { text: `Good evening${name}`, icon: Sunset, sub: 'Let\'s wrap up the day strong.' };
-    return { text: `Good night${name}`, icon: Moon, sub: 'One more thing before bed?' };
-  }, [user?.name]);
+    if (hour < 6) return { text: `${t('greeting.lateNight')}${name}?`, icon: Moon, sub: t('greeting.sub.lateNight') };
+    if (hour < 12) return { text: `${t('greeting.morning')}${name}`, icon: Sunrise, sub: t('greeting.sub.morning') };
+    if (hour < 17) return { text: `${t('greeting.afternoon')}${name}`, icon: Sun, sub: t('greeting.sub.afternoon') };
+    if (hour < 21) return { text: `${t('greeting.evening')}${name}`, icon: Sunset, sub: t('greeting.sub.evening') };
+    return { text: `${t('greeting.night')}${name}`, icon: Moon, sub: t('greeting.sub.night') };
+  }, [user?.name, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +120,7 @@ export function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 max-w-3xl w-full">
         {suggestions.map((suggestion) => (
           <button
-            key={suggestion.title}
+            key={suggestion.titleKey}
             onClick={() => onSuggestionClick(suggestion.prompt)}
             className="group flex flex-col items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-2xl bg-surface-dark-2 border border-white/5 hover:border-brand-500/30 active:border-brand-500/50 hover:bg-surface-dark-3 transition-all text-left tap-none active:scale-[0.98]"
           >
@@ -127,11 +129,11 @@ export function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
             </div>
             <div>
               <h3 className="text-xs sm:text-sm font-medium text-zinc-200 mb-0.5 sm:mb-1 flex items-center gap-1 sm:gap-2">
-                {suggestion.title}
+                {t(suggestion.titleKey)}
                 <ArrowRight className="w-3 h-3 text-zinc-600 group-hover:text-brand-400 group-hover:translate-x-1 transition-all" />
               </h3>
               <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2">
-                {suggestion.description}
+                {t(suggestion.descKey)}
               </p>
             </div>
           </button>
@@ -142,15 +144,15 @@ export function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
       <div className="flex items-center gap-4 sm:gap-6 mt-6 sm:mt-10 text-[11px] text-zinc-600">
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${status.apiOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
-          {status.apiOnline ? 'Online' : 'Offline'}
+          {status.apiOnline ? t('status.online') : t('status.offline')}
         </div>
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${status.integrations > 0 ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
-          {status.integrations} Integration{status.integrations !== 1 ? 's' : ''}
+          {status.integrations} {status.integrations !== 1 ? t('status.integrations_plural') : t('status.integrations')}
         </div>
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${status.memories > 0 ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
-          {status.memories > 0 ? `${status.memories} Memories` : 'Memory Empty'}
+          {status.memories > 0 ? `${status.memories} ${t('status.memories')}` : t('status.memoryEmpty')}
         </div>
       </div>
     </div>

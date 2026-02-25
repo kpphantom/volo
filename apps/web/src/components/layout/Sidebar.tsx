@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { useChatStore } from '@/stores/chatStore';
 import { useAppStore, type Page } from '@/stores/appStore';
+import { useTranslation } from '@/lib/i18n';
 
 interface IntegrationInfo {
   id: string;
@@ -52,6 +53,7 @@ export function Sidebar() {
   const [integrations, setIntegrations] = useState<IntegrationInfo[]>(defaultIntegrations);
   const { messages, clearMessages } = useChatStore();
   const { sidebarOpen, currentPage, setPage, toggleSidebar } = useAppStore();
+  const { t } = useTranslation();
 
   // Fetch real integration status
   useEffect(() => {
@@ -84,44 +86,44 @@ export function Sidebar() {
     setPage('chat');
   };
 
-  const navGroups: { label: string; items: { id: Page; icon: typeof LayoutDashboard; label: string }[] }[] = [
+  const navGroups: { labelKey: string; items: { id: Page; icon: typeof LayoutDashboard; labelKey: string }[] }[] = [
     {
-      label: 'Main',
+      labelKey: 'group.main',
       items: [
-        { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { id: 'conversations', icon: History, label: 'History' },
-        { id: 'standing-orders', icon: Clock, label: 'Standing Orders' },
+        { id: 'dashboard', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
+        { id: 'conversations', icon: History, labelKey: 'nav.history' },
+        { id: 'standing-orders', icon: Clock, labelKey: 'nav.standingOrders' },
       ],
     },
     {
-      label: 'Social & Comms',
+      labelKey: 'group.socialComms',
       items: [
-        { id: 'social', icon: Share2, label: 'Social Feed' },
-        { id: 'messages', icon: MessagesSquare, label: 'Messages' },
+        { id: 'social', icon: Share2, labelKey: 'nav.socialFeed' },
+        { id: 'messages', icon: MessagesSquare, labelKey: 'nav.messages' },
       ],
     },
     {
-      label: 'Tools',
+      labelKey: 'group.tools',
       items: [
-        { id: 'google', icon: Chrome, label: 'Google' },
-        { id: 'youtube', icon: Youtube, label: 'YouTube' },
-        { id: 'vscode', icon: Terminal, label: 'VS Code' },
+        { id: 'google', icon: Chrome, labelKey: 'nav.google' },
+        { id: 'youtube', icon: Youtube, labelKey: 'nav.youtube' },
+        { id: 'vscode', icon: Terminal, labelKey: 'nav.vscode' },
       ],
     },
     {
-      label: 'Insights',
+      labelKey: 'group.insights',
       items: [
-        { id: 'activity', icon: Activity, label: 'Activity' },
-        { id: 'analytics', icon: BarChart3, label: 'Analytics' },
-        { id: 'health', icon: Heart, label: 'Health' },
+        { id: 'activity', icon: Activity, labelKey: 'nav.activity' },
+        { id: 'analytics', icon: BarChart3, labelKey: 'nav.analytics' },
+        { id: 'health', icon: Heart, labelKey: 'nav.health' },
       ],
     },
     {
-      label: 'More',
+      labelKey: 'group.more',
       items: [
-        { id: 'marketplace', icon: Package, label: 'Marketplace' },
-        { id: 'docs', icon: BookOpen, label: 'Docs' },
-        { id: 'settings', icon: Settings, label: 'Settings' },
+        { id: 'marketplace', icon: Package, labelKey: 'nav.marketplace' },
+        { id: 'docs', icon: BookOpen, labelKey: 'nav.docs' },
+        { id: 'settings', icon: Settings, labelKey: 'nav.settings' },
       ],
     },
   ];
@@ -151,7 +153,7 @@ export function Sidebar() {
           className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition-colors"
         >
           <Plus className="w-4 h-4" />
-          New Conversation
+          {t('sidebar.newConversation')}
         </button>
       </div>
 
@@ -166,7 +168,7 @@ export function Sidebar() {
               : 'text-zinc-500 hover:text-zinc-300'
           )}
         >
-          Conversations
+          {t('sidebar.conversations')}
         </button>
         <button
           onClick={() => setActiveTab('integrations')}
@@ -177,7 +179,7 @@ export function Sidebar() {
               : 'text-zinc-500 hover:text-zinc-300'
           )}
         >
-          Integrations
+          {t('sidebar.integrations')}
         </button>
       </div>
 
@@ -188,14 +190,14 @@ export function Sidebar() {
             {hasConversation ? (
               <>
                 <p className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-                  Current
+                  {t('sidebar.current')}
                 </p>
                 <div className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5 text-left group">
                   <MessageSquare className="w-4 h-4 text-brand-400 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-zinc-300 truncate">{conversationTitle}</p>
                     <p className="text-[10px] text-zinc-600">
-                      {messages.length} messages
+                      {messages.length} {t('sidebar.messages')}
                     </p>
                   </div>
                   <button
@@ -211,10 +213,10 @@ export function Sidebar() {
               <div className="px-3 py-8 text-center">
                 <MessageSquare className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
                 <p className="text-xs text-zinc-500">
-                  No conversations yet.
+                  {t('sidebar.noConversations')}
                 </p>
                 <p className="text-[11px] text-zinc-600 mt-1">
-                  Start chatting with Volo!
+                  {t('sidebar.startChatting')}
                 </p>
               </div>
             )}
@@ -222,7 +224,7 @@ export function Sidebar() {
         ) : (
           <>
             <p className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-              Connected Services
+              {t('sidebar.connectedServices')}
             </p>
             {integrations.map((integration) => (
               <button
@@ -242,7 +244,7 @@ export function Sidebar() {
                       : 'bg-zinc-800 text-zinc-500'
                   )}
                 >
-                  {integration.connected ? 'Active' : 'Setup'}
+                  {integration.connected ? t('sidebar.active') : t('sidebar.setup')}
                 </span>
               </button>
             ))}
@@ -253,9 +255,9 @@ export function Sidebar() {
       {/* Bottom — Dashboard & Settings */}
       <nav className="border-t border-white/5 p-3 space-y-3 overflow-y-auto max-h-[50vh]" role="navigation" aria-label="Main navigation">
         {navGroups.map((group) => (
-          <div key={group.label}>
+          <div key={group.labelKey}>
             <p className="px-3 py-1 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">
-              {group.label}
+              {t(group.labelKey as any)}
             </p>
             <div className="space-y-0.5">
               {group.items.map((item) => (
@@ -268,11 +270,11 @@ export function Sidebar() {
                       ? 'bg-brand-600/10 text-brand-400'
                       : 'hover:bg-white/5 text-zinc-400'
                   )}
-                  aria-label={item.label}
+                  aria-label={t(item.labelKey as any)}
                   aria-current={currentPage === item.id ? 'page' : undefined}
                 >
                   <item.icon className="w-4 h-4" />
-                  <span className="text-sm">{item.label}</span>
+                  <span className="text-sm">{t(item.labelKey as any)}</span>
                 </button>
               ))}
             </div>
