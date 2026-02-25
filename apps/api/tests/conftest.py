@@ -5,7 +5,6 @@ Pytest fixtures for API testing.
 
 import pytest
 import pytest_asyncio
-import asyncio
 from typing import AsyncGenerator
 from httpx import AsyncClient, ASGITransport
 
@@ -23,14 +22,6 @@ from sqlalchemy import text as _sa_text
 from main import app
 from app.auth import create_access_token
 from app.database import engine, Base
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for all tests."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
