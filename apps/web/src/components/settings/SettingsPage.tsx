@@ -18,6 +18,7 @@ import {
   Mail,
   Globe,
   RefreshCw,
+  Landmark,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -345,6 +346,15 @@ function IntegrationsSection() {
       color: 'amber',
       keyName: '',
     },
+    {
+      name: 'Plaid',
+      icon: Landmark,
+      category: 'Finance',
+      description: 'Bank accounts, transactions, budgeting',
+      connected: false,
+      color: 'emerald',
+      keyName: 'PLAID',
+    },
   ]);
 
   useEffect(() => {
@@ -361,6 +371,17 @@ function IntegrationsSection() {
         );
       })
       .catch(() => {});
+
+    // Check Plaid status
+    api.get<{ connected?: boolean }>('/api/finance/status')
+      .then((data) => {
+        if (data.connected) {
+          setIntegrations((prev) =>
+            prev.map((int) => int.name === 'Plaid' ? { ...int, connected: true } : int)
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleConnect = (int: typeof integrations[0]) => {
@@ -371,6 +392,8 @@ function IntegrationsSection() {
           else toast.info('Set up Google OAuth credentials in your .env first');
         })
         .catch(() => toast.error('Could not get Google auth URL'));
+    } else if (int.name === 'Plaid') {
+      toast.info('Set PLAID_CLIENT_ID & PLAID_SECRET in your .env, then use the Finance page to link your bank via Plaid Link');
     } else {
       toast.info(`Add your ${int.keyName} in the API Keys tab to connect ${int.name}`);
     }

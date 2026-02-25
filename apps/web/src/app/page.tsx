@@ -28,6 +28,7 @@ const SocialFeedPage = lazy(() => import('@/components/social/SocialFeedPage').t
 const MessagingHubPage = lazy(() => import('@/components/messaging/MessagingHubPage').then(m => ({ default: m.MessagingHubPage })));
 const HealthDashboardPage = lazy(() => import('@/components/health/HealthDashboardPage').then(m => ({ default: m.HealthDashboardPage })));
 const VSCodePage = lazy(() => import('@/components/vscode/VSCodePage').then(m => ({ default: m.VSCodePage })));
+const BudgetingPage = lazy(() => import('@/components/finance/BudgetingPage').then(m => ({ default: m.BudgetingPage })));
 const AuthPage = lazy(() => import('@/components/auth/AuthPage').then(m => ({ default: m.AuthPage })));
 const OnboardingWizard = lazy(() => import('@/components/onboarding/OnboardingWizard').then(m => ({ default: m.OnboardingWizard })));
 
@@ -207,6 +208,7 @@ export default function HomePage() {
                 {currentPage === 'messages' && <MessagingHubPage />}
                 {currentPage === 'health' && <HealthDashboardPage />}
                 {currentPage === 'vscode' && <VSCodePage />}
+                {currentPage === 'finance' && <BudgetingPage />}
               </Suspense>
             </ErrorBoundary>
           </main>

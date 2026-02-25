@@ -18,7 +18,8 @@ export type Page =
   | 'social'
   | 'messages'
   | 'health'
-  | 'vscode';
+  | 'vscode'
+  | 'finance';
 
 interface AppState {
   currentPage: Page;

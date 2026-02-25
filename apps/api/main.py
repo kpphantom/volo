@@ -34,6 +34,7 @@ from app.routes import social_actions as social_actions_routes
 from app.routes import fitness as fitness_routes
 from app.routes import remote as remote_routes
 from app.routes import summarize as summarize_routes
+from app.routes import finance as finance_routes
 
 from app.database import init_db
 from app.middleware import RateLimitMiddleware, RequestLogMiddleware
@@ -131,6 +132,9 @@ app.include_router(authenticator_routes.router, prefix="/api", tags=["Authentica
 
 # ── AI Summarize
 app.include_router(summarize_routes.router, prefix="/api", tags=["AI Summarize"])
+
+# ── Finance & Budgeting
+app.include_router(finance_routes.router, prefix="/api", tags=["Finance"])
 
 @app.get("/")
 async def root():

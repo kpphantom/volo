@@ -26,6 +26,7 @@ import {
   Share2,
   MessagesSquare,
   Heart,
+  Wallet,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
@@ -116,6 +117,7 @@ export function Sidebar() {
         { id: 'activity', icon: Activity, labelKey: 'nav.activity' },
         { id: 'analytics', icon: BarChart3, labelKey: 'nav.analytics' },
         { id: 'health', icon: Heart, labelKey: 'nav.health' },
+        { id: 'finance', icon: Wallet, labelKey: 'nav.finance' },
       ],
     },
     {

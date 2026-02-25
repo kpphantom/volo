@@ -39,6 +39,7 @@ const en = {
   'nav.marketplace': 'Marketplace',
   'nav.docs': 'Docs',
   'nav.socialFeed': 'Social Feed',
+  'nav.finance': 'Finance',
 
   // TopBar
   'topbar.search': 'Search or ask anything...',
@@ -183,6 +184,7 @@ const es: Partial<Record<TranslationKey, string>> = {
   'nav.marketplace': 'Tienda',
   'nav.docs': 'Docs',
   'nav.socialFeed': 'Feed Social',
+  'nav.finance': 'Finanzas',
 
   'topbar.search': 'Buscar o preguntar...',
   'topbar.newConversation': 'Nueva Conversación',
@@ -307,6 +309,7 @@ const fr: Partial<Record<TranslationKey, string>> = {
   'nav.marketplace': 'Boutique',
   'nav.docs': 'Docs',
   'nav.socialFeed': 'Fil Social',
+  'nav.finance': 'Finances',
 
   'topbar.search': 'Rechercher ou demander...',
   'topbar.newConversation': 'Nouvelle Conversation',
@@ -431,6 +434,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   'nav.marketplace': 'المتجر',
   'nav.docs': 'المستندات',
   'nav.socialFeed': 'موجز اجتماعي',
+  'nav.finance': 'المالية',
 
   'topbar.search': 'بحث أو اسأل...',
   'topbar.newConversation': 'محادثة جديدة',
@@ -555,6 +559,7 @@ const de: Partial<Record<TranslationKey, string>> = {
   'nav.marketplace': 'Marktplatz',
   'nav.docs': 'Docs',
   'nav.socialFeed': 'Social Feed',
+  'nav.finance': 'Finanzen',
 
   'topbar.search': 'Suchen oder fragen...',
   'topbar.newConversation': 'Neue Unterhaltung',
@@ -679,6 +684,7 @@ const pt: Partial<Record<TranslationKey, string>> = {
   'nav.marketplace': 'Loja',
   'nav.docs': 'Docs',
   'nav.socialFeed': 'Feed Social',
+  'nav.finance': 'Finanças',
 
   'topbar.search': 'Buscar ou perguntar...',
   'topbar.newConversation': 'Nova Conversa',
@@ -803,6 +809,7 @@ const zh: Partial<Record<TranslationKey, string>> = {
   'nav.marketplace': '市场',
   'nav.docs': '文档',
   'nav.socialFeed': '社交动态',
+  'nav.finance': '财务',
 
   'topbar.search': '搜索或提问...',
   'topbar.newConversation': '新对话',
@@ -927,6 +934,7 @@ const ja: Partial<Record<TranslationKey, string>> = {
   'nav.marketplace': 'マーケット',
   'nav.docs': 'ドキュメント',
   'nav.socialFeed': 'ソーシャルフィード',
+  'nav.finance': 'ファイナンス',
 
   'topbar.search': '検索または質問...',
   'topbar.newConversation': '新しい会話',
@@ -1051,6 +1059,7 @@ const ko: Partial<Record<TranslationKey, string>> = {
   'nav.marketplace': '마켓',
   'nav.docs': '문서',
   'nav.socialFeed': '소셜 피드',
+  'nav.finance': '금융',
 
   'topbar.search': '검색 또는 질문...',
   'topbar.newConversation': '새 대화',
@@ -1153,6 +1162,7 @@ const hi: Partial<Record<TranslationKey, string>> = {
   'greeting.lateNight': 'अभी भी जागे हुए',
   'nav.chat': 'चैट', 'nav.home': 'होम', 'nav.messages': 'संदेश', 'nav.social': 'सोशल', 'nav.more': 'और',
   'nav.settings': 'सेटिंग्स',
+  'nav.finance': 'वित्त',
   'menu.settings': 'सेटिंग्स', 'menu.helpDocs': 'सहायता', 'menu.signOut': 'लॉग आउट', 'menu.language': 'भाषा', 'menu.theme': 'थीम',
   'topbar.search': 'खोजें या पूछें...',
 };
@@ -1165,6 +1175,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   'greeting.lateNight': 'Ещё не спите',
   'nav.chat': 'Чат', 'nav.home': 'Главная', 'nav.messages': 'Сообщения', 'nav.social': 'Соцсети', 'nav.more': 'Ещё',
   'nav.settings': 'Настройки',
+  'nav.finance': 'Финансы',
   'menu.settings': 'Настройки', 'menu.helpDocs': 'Помощь', 'menu.signOut': 'Выйти', 'menu.language': 'Язык', 'menu.theme': 'Тема',
   'topbar.search': 'Поиск или вопрос...',
 };
@@ -1177,6 +1188,7 @@ const it: Partial<Record<TranslationKey, string>> = {
   'greeting.lateNight': 'Ancora sveglio',
   'nav.chat': 'Chat', 'nav.home': 'Home', 'nav.messages': 'Messaggi', 'nav.social': 'Social', 'nav.more': 'Altro',
   'nav.settings': 'Impostazioni',
+  'nav.finance': 'Finanza',
   'menu.settings': 'Impostazioni', 'menu.helpDocs': 'Aiuto & Docs', 'menu.signOut': 'Esci', 'menu.language': 'Lingua', 'menu.theme': 'Tema',
   'topbar.search': 'Cerca o chiedi...',
 };
@@ -1189,6 +1201,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   'greeting.lateNight': 'Hâlâ ayakta',
   'nav.chat': 'Sohbet', 'nav.home': 'Ana Sayfa', 'nav.messages': 'Mesajlar', 'nav.social': 'Sosyal', 'nav.more': 'Daha',
   'nav.settings': 'Ayarlar',
+  'nav.finance': 'Finans',
   'menu.settings': 'Ayarlar', 'menu.helpDocs': 'Yardım', 'menu.signOut': 'Çıkış', 'menu.language': 'Dil', 'menu.theme': 'Tema',
   'topbar.search': 'Ara veya sor...',
 };
@@ -1200,6 +1213,7 @@ const nl: Partial<Record<TranslationKey, string>> = {
   'greeting.night': 'Goedenacht',
   'greeting.lateNight': 'Nog wakker',
   'nav.settings': 'Instellingen',
+  'nav.finance': 'Financiën',
   'menu.settings': 'Instellingen', 'menu.helpDocs': 'Help & Docs', 'menu.signOut': 'Uitloggen', 'menu.language': 'Taal', 'menu.theme': 'Thema',
   'topbar.search': 'Zoeken of vragen...',
 };

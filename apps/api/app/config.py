@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     slack_signing_secret: str = ""
     slack_redirect_uri: str = ""
 
+    # Plaid (Banking)
+    plaid_client_id: str = ""
+    plaid_secret: str = ""
+    plaid_env: str = "sandbox"  # sandbox, development, production
+
     # Authenticator Vault
     volo_vault_key: str = ""
 
