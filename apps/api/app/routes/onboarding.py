@@ -47,8 +47,13 @@ async def get_onboarding_status(current_user: CurrentUser = Depends(get_current_
 
 
 @router.post("/onboarding/step")
-async def submit_onboarding_step(step: OnboardingStep):
+async def submit_onboarding_step(step: OnboardingStep, current_user: CurrentUser = Depends(get_current_user)):
     """Submit a step in the onboarding process."""
+    async with async_session() as session:
+        user_row = await session.get(User, current_user.user_id)
+        if user_row:
+            user_row.onboarding_step = step.step
+            await session.commit()
     return {
         "success": True,
         "step": step.step,

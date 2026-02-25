@@ -240,8 +240,8 @@ async def _twitter_post(token: str, text: str) -> dict:
 # ── Instagram ────────────────────────────────────────────────────────
 
 async def _instagram_like(token: str, media_id: str, user_id: str) -> dict:
-    """Instagram Graph API doesn't support liking via API. Return info."""
-    return {"info": "Instagram likes are not supported via API — open the post to like."}
+    """Instagram Graph API doesn't support liking via API."""
+    raise HTTPException(status_code=501, detail="Instagram like not supported via API")
 
 
 async def _instagram_comment(token: str, media_id: str, text: str) -> dict:
@@ -308,15 +308,7 @@ async def _facebook_post(token: str, text: str) -> dict:
 
 async def _reddit_vote(token: str, post_id: str, user_id: str) -> dict:
     """Reddit upvote (requires user OAuth token with 'vote' scope)."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://oauth.reddit.com/api/vote",
-            data={"id": f"t3_{post_id}", "dir": 1},
-            headers={"Authorization": f"Bearer {token}", "User-Agent": "Volo/1.0"},
-        )
-        if resp.status_code == 200:
-            return {"voted": True}
-        return {"info": "Reddit voting requires user OAuth. Connect Reddit with full permissions."}
+    raise HTTPException(status_code=501, detail="Reddit voting requires OAuth — not yet implemented")
 
 
 async def _reddit_comment(token: str, post_id: str, text: str) -> dict:

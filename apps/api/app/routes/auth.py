@@ -24,7 +24,7 @@ from sqlalchemy import select
 from app.auth import (
     hash_password, verify_password,
     create_access_token, create_refresh_token, decode_token,
-    generate_api_key, get_current_user, CurrentUser,
+    get_current_user, CurrentUser,
 )
 from app.database import async_session, User, Integration
 from app.config import settings
@@ -187,15 +187,10 @@ async def me(current_user: CurrentUser = Depends(get_current_user)):
     }
 
 
-@router.post("/api-keys")
-async def create_api_key_route(request: Request):
+@router.post("/api-keys", status_code=501)
+async def create_api_key_route():
     """Create a new API key for programmatic access."""
-    raw_key, key_hash, prefix = generate_api_key()
-    return {
-        "key": raw_key,
-        "prefix": prefix,
-        "message": "Store this key securely - it will not be shown again.",
-    }
+    raise HTTPException(501, "API key management not yet implemented")
 
 
 # ===== Google OAuth 2.0 =====

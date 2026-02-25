@@ -12,15 +12,14 @@ Key endpoints:
   POST   /api/authenticator/verify      — Test that a code matches
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
+from app.auth import get_current_user, CurrentUser
 from app.services.authenticator import authenticator_vault
 
 router = APIRouter()
-
-DEFAULT_USER = "dev-user"
 
 
 class AddAccountRequest(BaseModel):
@@ -40,7 +39,7 @@ class VerifyCodeRequest(BaseModel):
 
 
 @router.post("/authenticator/add")
-async def add_authenticator_account(body: AddAccountRequest):
+async def add_authenticator_account(body: AddAccountRequest, current_user: CurrentUser = Depends(get_current_user)):
     """
     Add a TOTP / Google Authenticator account to Volo's vault.
 
@@ -52,7 +51,7 @@ async def add_authenticator_account(body: AddAccountRequest):
     """
     try:
         result = await authenticator_vault.add_account(
-            user_id=DEFAULT_USER,
+            user_id=current_user.user_id,
             service=body.service,
             secret=body.secret.replace(" ", "").upper(),
             label=body.label or "",
@@ -68,18 +67,18 @@ async def add_authenticator_account(body: AddAccountRequest):
 
 
 @router.get("/authenticator/codes")
-async def get_all_codes():
+async def get_all_codes(current_user: CurrentUser = Depends(get_current_user)):
     """
     Get current TOTP codes for ALL accounts.
     Like opening Google Authenticator — shows all your codes at once.
     Each code includes remaining seconds before refresh.
     """
-    codes = await authenticator_vault.get_all_codes(user_id=DEFAULT_USER)
+    codes = await authenticator_vault.get_all_codes(user_id=current_user.user_id)
     return {"codes": codes, "total": len(codes)}
 
 
 @router.get("/authenticator/code/{service}")
-async def get_code(service: str):
+async def get_code(service: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the current TOTP code for a specific service.
     This is what Volo calls internally when auto-filling 2FA.
@@ -87,7 +86,7 @@ async def get_code(service: str):
     Example: GET /api/authenticator/code/telegram
     Returns: {"code": "482901", "remaining_seconds": 17, ...}
     """
-    result = await authenticator_vault.get_code(user_id=DEFAULT_USER, service=service)
+    result = await authenticator_vault.get_code(user_id=current_user.user_id, service=service)
     if not result:
         raise HTTPException(
             404,
@@ -98,17 +97,17 @@ async def get_code(service: str):
 
 
 @router.get("/authenticator/accounts")
-async def list_accounts():
+async def list_accounts(current_user: CurrentUser = Depends(get_current_user)):
     """List all TOTP accounts in the vault (no secrets or codes)."""
-    accounts = await authenticator_vault.list_accounts(user_id=DEFAULT_USER)
+    accounts = await authenticator_vault.list_accounts(user_id=current_user.user_id)
     return {"accounts": accounts, "total": len(accounts)}
 
 
 @router.delete("/authenticator/{service}")
-async def remove_account(service: str):
+async def remove_account(service: str, current_user: CurrentUser = Depends(get_current_user)):
     """Remove a TOTP account from the vault."""
     removed = await authenticator_vault.remove_account(
-        user_id=DEFAULT_USER, service=service
+        user_id=current_user.user_id, service=service
     )
     if not removed:
         raise HTTPException(404, f"No authenticator found for '{service}'")
@@ -116,13 +115,13 @@ async def remove_account(service: str):
 
 
 @router.post("/authenticator/verify")
-async def verify_code(body: VerifyCodeRequest):
+async def verify_code(body: VerifyCodeRequest, current_user: CurrentUser = Depends(get_current_user)):
     """
     Verify a TOTP code against the stored secret.
     Useful for testing that the setup was done correctly.
     """
     valid = await authenticator_vault.verify_code(
-        user_id=DEFAULT_USER,
+        user_id=current_user.user_id,
         service=body.service,
         code=body.code,
     )

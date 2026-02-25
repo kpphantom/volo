@@ -128,7 +128,7 @@ jobs:
 
       - name: Run unit tests
         working-directory: apps/web
-        run: npx vitest run --reporter=verbose 2>/dev/null || echo "No tests configured yet"
+        run: npx vitest run --reporter=verbose
 
   # ── Build ──────────────────────────────────
   build:

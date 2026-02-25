@@ -3,6 +3,8 @@ VOLO — AI Life Operating System
 Main FastAPI Application
 """
 
+import json
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -11,6 +13,38 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+class _JsonFormatter(logging.Formatter):
+    """Emit log records as single-line JSON for structured log aggregators."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        data: dict = {
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        # Merge any extra fields attached by logger.info("msg", extra={...})
+        for key, value in record.__dict__.items():
+            if key not in logging.LogRecord.__dict__ and key not in (
+                "message", "asctime", "args", "exc_info", "exc_text", "stack_info",
+            ):
+                data[key] = value
+        if record.exc_info:
+            data["exc"] = self.formatException(record.exc_info)
+        return json.dumps(data)
+
+
+def _configure_logging() -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(_JsonFormatter())
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
+
+_configure_logging()
 
 # Core routes
 from app.routes import chat, integrations, memory, onboarding, health, whitelabel, system

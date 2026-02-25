@@ -3,8 +3,10 @@ VOLO — Billing Routes
 Subscription management, plan info, checkout sessions.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from app.auth import get_current_user, CurrentUser
+from app.database import async_session, User
 from app.services.billing import BillingService
 
 router = APIRouter()
@@ -19,9 +21,9 @@ async def get_plans():
 
 
 @router.get("/billing/usage")
-async def get_usage():
+async def get_usage(current_user: CurrentUser = Depends(get_current_user)):
     """Get current usage for the tenant."""
-    usage = await billing.get_usage("volo-default")
+    usage = await billing.get_usage(current_user.tenant_id)
     return usage
 
 
@@ -32,7 +34,7 @@ class CheckoutRequest(BaseModel):
 
 
 @router.post("/billing/checkout")
-async def create_checkout(body: CheckoutRequest):
+async def create_checkout(body: CheckoutRequest, current_user: CurrentUser = Depends(get_current_user)):
     """Create a Stripe checkout session."""
     plans = await billing.get_plans()
     plan = next((p for p in plans if p["id"] == body.plan), None)
@@ -41,8 +43,12 @@ async def create_checkout(body: CheckoutRequest):
     if not plan.get("price_id"):
         return {"error": "No Stripe price configured for this plan"}
 
+    async with async_session() as session:
+        user_row = await session.get(User, current_user.user_id)
+        customer_id = getattr(user_row, "stripe_customer_id", "") or "" if user_row else ""
+
     result = await billing.create_checkout_session(
-        customer_id="",  # Would be fetched from DB
+        customer_id=customer_id,
         price_id=plan["price_id"],
         success_url=body.success_url,
         cancel_url=body.cancel_url,
@@ -51,7 +57,7 @@ async def create_checkout(body: CheckoutRequest):
 
 
 @router.get("/billing/subscription")
-async def get_subscription():
+async def get_subscription(current_user: CurrentUser = Depends(get_current_user)):
     """Get current subscription status."""
     return {
         "plan": "free",

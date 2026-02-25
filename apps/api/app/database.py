@@ -95,10 +95,12 @@ class ChatMessage(Base):
     __table_args__ = (
         Index("ix_chat_messages_conversation_id", "conversation_id"),
         Index("ix_chat_messages_created_at", "created_at"),
+        Index("ix_chat_messages_user_id", "user_id"),
     )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
     role = Column(String(20), nullable=False)  # user, assistant, system
     content = Column(Text, nullable=False)
     tool_calls = Column(JSON, nullable=True)
@@ -238,6 +240,19 @@ class AuthenticatorAccount(Base):
     last_used_at = Column(DateTime, nullable=True)
 
 
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    action = Column(String, nullable=False)
+    user_id = Column(String, nullable=True)
+    resource_type = Column(String, nullable=True)
+    resource_id = Column(String, nullable=True)
+    details = Column(JSON, default=dict)
+    ip_address = Column(String, nullable=True)
+
+
 # ---- Engine & Session ----
 
 engine = create_async_engine(
@@ -261,12 +276,9 @@ async def get_db():
 
 
 async def init_db():
-    """Create all tables and seed default data."""
+    """Seed default data (tables created by alembic upgrade head)."""
     try:
         from sqlalchemy import select as sa_select
-
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
 
         # Seed default tenant + dev user so FK constraints work
         async with async_session() as session:

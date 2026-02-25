@@ -348,6 +348,7 @@ class SocialFeedService:
                 "subreddit": post.get("subreddit", ""),
                 "media": [],
                 "url": "",
+                "_demo": True,
             }
             for i, post in enumerate(demos.get(platform, []))
         ]

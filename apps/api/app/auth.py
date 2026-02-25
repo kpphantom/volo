@@ -9,15 +9,12 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
+import bcrypt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.config import settings
-
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Bearer token extractor
 security = HTTPBearer(auto_error=False)
@@ -26,11 +23,11 @@ security = HTTPBearer(auto_error=False)
 # ── Password Utilities ───────────────────────
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 # ── JWT Utilities ────────────────────────────

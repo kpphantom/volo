@@ -6,16 +6,15 @@ Persisted to PostgreSQL Integration table.
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import select
 
+from app.auth import get_current_user, CurrentUser
 from app.database import async_session, Integration
 
 router = APIRouter()
-
-DEFAULT_USER = "dev-user"
 
 
 class IntegrationConnect(BaseModel):
@@ -143,11 +142,11 @@ AVAILABLE_INTEGRATIONS = [
 
 
 @router.get("/integrations")
-async def list_integrations():
+async def list_integrations(current_user: CurrentUser = Depends(get_current_user)):
     """List all available integrations and their connection status."""
     async with async_session() as session:
         result = await session.execute(
-            select(Integration).where(Integration.user_id == DEFAULT_USER)
+            select(Integration).where(Integration.user_id == current_user.user_id)
         )
         connected = [
             {
@@ -169,7 +168,7 @@ async def list_integrations():
 
 
 @router.post("/integrations/connect")
-async def connect_integration(integration: IntegrationConnect):
+async def connect_integration(integration: IntegrationConnect, current_user: CurrentUser = Depends(get_current_user)):
     """Connect a new integration."""
     valid_types = [i["type"] for i in AVAILABLE_INTEGRATIONS]
     if integration.type not in valid_types:
@@ -182,7 +181,7 @@ async def connect_integration(integration: IntegrationConnect):
         # Upsert — replace existing integration of same type
         result = await session.execute(
             select(Integration).where(
-                Integration.user_id == DEFAULT_USER,
+                Integration.user_id == current_user.user_id,
                 Integration.type == integration.type,
             )
         )
@@ -194,7 +193,7 @@ async def connect_integration(integration: IntegrationConnect):
             existing.last_sync_at = datetime.utcnow()
         else:
             session.add(Integration(
-                user_id=DEFAULT_USER,
+                user_id=current_user.user_id,
                 type=integration.type,
                 category=info.get("category", "other"),
                 name=info.get("name", integration.type),
@@ -215,11 +214,14 @@ async def connect_integration(integration: IntegrationConnect):
 
 
 @router.delete("/integrations/{integration_id}")
-async def disconnect_integration(integration_id: str):
+async def disconnect_integration(integration_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """Disconnect an integration."""
     async with async_session() as session:
         result = await session.execute(
-            select(Integration).where(Integration.id == integration_id)
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.user_id == current_user.user_id,
+            )
         )
         integration = result.scalar_one_or_none()
         if not integration:
@@ -232,11 +234,14 @@ async def disconnect_integration(integration_id: str):
 
 
 @router.post("/integrations/{integration_id}/sync")
-async def sync_integration(integration_id: str):
+async def sync_integration(integration_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """Trigger a manual sync for an integration."""
     async with async_session() as session:
         result = await session.execute(
-            select(Integration).where(Integration.id == integration_id)
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.user_id == current_user.user_id,
+            )
         )
         integration = result.scalar_one_or_none()
         if not integration:

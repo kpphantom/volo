@@ -6,15 +6,14 @@ Manage agent action approvals, backed by PostgreSQL.
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.auth import get_current_user, CurrentUser
 from app.database import async_session, ApprovalRequest
 
 router = APIRouter()
-
-DEFAULT_USER = "dev-user"
 
 
 class ApprovalCreate(BaseModel):
@@ -40,10 +39,10 @@ def _approval_dict(a):
 
 
 @router.get("/approvals")
-async def list_approvals(status: Optional[str] = None):
+async def list_approvals(status: Optional[str] = None, current_user: CurrentUser = Depends(get_current_user)):
     """List approval requests."""
     async with async_session() as session:
-        query = select(ApprovalRequest).where(ApprovalRequest.user_id == DEFAULT_USER)
+        query = select(ApprovalRequest).where(ApprovalRequest.user_id == current_user.user_id)
         if status:
             query = query.where(ApprovalRequest.status == status)
         query = query.order_by(ApprovalRequest.created_at.desc()).limit(50)
@@ -53,12 +52,12 @@ async def list_approvals(status: Optional[str] = None):
 
 
 @router.get("/approvals/pending")
-async def list_pending():
+async def list_pending(current_user: CurrentUser = Depends(get_current_user)):
     """List pending approvals."""
     async with async_session() as session:
         result = await session.execute(
             select(ApprovalRequest).where(
-                ApprovalRequest.user_id == DEFAULT_USER,
+                ApprovalRequest.user_id == current_user.user_id,
                 ApprovalRequest.status == "pending",
             ).order_by(ApprovalRequest.created_at.desc())
         )
@@ -67,11 +66,11 @@ async def list_pending():
 
 
 @router.post("/approvals")
-async def create_approval(body: ApprovalCreate):
+async def create_approval(body: ApprovalCreate, current_user: CurrentUser = Depends(get_current_user)):
     """Create a new approval request."""
     async with async_session() as session:
         approval = ApprovalRequest(
-            user_id=DEFAULT_USER,
+            user_id=current_user.user_id,
             action=body.action,
             description=body.description,
             tool_name=body.tool_name,
@@ -85,11 +84,14 @@ async def create_approval(body: ApprovalCreate):
 
 
 @router.post("/approvals/{approval_id}/approve")
-async def approve_action(approval_id: str):
+async def approve_action(approval_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """Approve a pending action."""
     async with async_session() as session:
         result = await session.execute(
-            select(ApprovalRequest).where(ApprovalRequest.id == approval_id)
+            select(ApprovalRequest).where(
+                ApprovalRequest.id == approval_id,
+                ApprovalRequest.user_id == current_user.user_id,
+            )
         )
         a = result.scalar_one_or_none()
         if not a or a.status != "pending":
@@ -102,11 +104,14 @@ async def approve_action(approval_id: str):
 
 
 @router.post("/approvals/{approval_id}/deny")
-async def deny_action(approval_id: str, reason: str = ""):
+async def deny_action(approval_id: str, reason: str = "", current_user: CurrentUser = Depends(get_current_user)):
     """Deny a pending action."""
     async with async_session() as session:
         result = await session.execute(
-            select(ApprovalRequest).where(ApprovalRequest.id == approval_id)
+            select(ApprovalRequest).where(
+                ApprovalRequest.id == approval_id,
+                ApprovalRequest.user_id == current_user.user_id,
+            )
         )
         a = result.scalar_one_or_none()
         if not a or a.status != "pending":

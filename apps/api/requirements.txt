@@ -19,7 +19,7 @@ pgvector>=0.2.5
 
 # Auth & Security
 python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.0
+bcrypt>=4.0.0
 cryptography>=42.0.0
 
 # Real-time

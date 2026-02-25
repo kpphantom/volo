@@ -99,13 +99,16 @@ async def create_conversation(body: CreateConversationRequest, current_user: Cur
 
 
 @router.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str):
+async def get_conversation(conversation_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """Get a conversation with its messages."""
     async with async_session() as session:
         result = await session.execute(
             select(Conversation)
             .options(selectinload(Conversation.messages))
-            .where(Conversation.id == conversation_id)
+            .where(
+                Conversation.id == conversation_id,
+                Conversation.user_id == current_user.user_id,
+            )
         )
         conv = result.scalar_one_or_none()
 
@@ -119,11 +122,14 @@ async def get_conversation(conversation_id: str):
 
 
 @router.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str):
+async def delete_conversation(conversation_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """Delete a conversation and its messages."""
     async with async_session() as session:
         result = await session.execute(
-            select(Conversation).where(Conversation.id == conversation_id)
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.user_id == current_user.user_id,
+            )
         )
         conv = result.scalar_one_or_none()
         if not conv:
@@ -139,11 +145,14 @@ async def delete_conversation(conversation_id: str):
 
 
 @router.patch("/conversations/{conversation_id}")
-async def update_conversation(conversation_id: str, body: CreateConversationRequest):
+async def update_conversation(conversation_id: str, body: CreateConversationRequest, current_user: CurrentUser = Depends(get_current_user)):
     """Update conversation title."""
     async with async_session() as session:
         result = await session.execute(
-            select(Conversation).where(Conversation.id == conversation_id)
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.user_id == current_user.user_id,
+            )
         )
         conv = result.scalar_one_or_none()
         if not conv:
@@ -166,6 +175,9 @@ async def add_message(conversation_id: str, request: dict, current_user: Current
             select(Conversation).where(Conversation.id == conversation_id)
         )
         conv = result.scalar_one_or_none()
+
+        if conv and conv.user_id != current_user.user_id:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
         if not conv:
             conv = Conversation(
@@ -202,7 +214,7 @@ async def branch_conversation(conversation_id: str, body: BranchConversationRequ
             .where(Conversation.id == conversation_id)
         )
         conv = result.scalar_one_or_none()
-        if not conv:
+        if not conv or conv.user_id != current_user.user_id:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         original_msgs = sorted(conv.messages, key=lambda m: m.created_at)
@@ -233,13 +245,16 @@ async def branch_conversation(conversation_id: str, body: BranchConversationRequ
 
 
 @router.get("/conversations/{conversation_id}/export")
-async def export_conversation(conversation_id: str, format: str = "json"):
+async def export_conversation(conversation_id: str, format: str = "json", current_user: CurrentUser = Depends(get_current_user)):
     """Export a conversation as JSON or Markdown."""
     async with async_session() as session:
         result = await session.execute(
             select(Conversation)
             .options(selectinload(Conversation.messages))
-            .where(Conversation.id == conversation_id)
+            .where(
+                Conversation.id == conversation_id,
+                Conversation.user_id == current_user.user_id,
+            )
         )
         conv = result.scalar_one_or_none()
         if not conv:

@@ -3,10 +3,10 @@ VOLO — Middleware
 Rate limiting, request logging, audit trail, error tracking.
 """
 
+import asyncio
 import time
 import uuid
 import logging
-from collections import defaultdict
 from typing import Callable
 
 from fastapi import Request, Response
@@ -18,38 +18,29 @@ logger = logging.getLogger("volo")
 # ── Rate Limiter ─────────────────────────────
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """
-    Simple in-memory rate limiter.
-    In production, use Redis-backed rate limiting.
-    """
+    """Redis-backed rate limiter (shared across all workers)."""
 
     def __init__(self, app, requests_per_minute: int = 60):
         super().__init__(app)
         self.rpm = requests_per_minute
-        self._requests: dict[str, list[float]] = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Skip rate limiting for health checks
         if request.url.path in ("/health", "/", "/docs", "/openapi.json"):
             return await call_next(request)
 
+        from app.services.cache import cache
         client_ip = request.client.host if request.client else "unknown"
-        now = time.time()
-
-        # Clean old entries
-        self._requests[client_ip] = [
-            t for t in self._requests[client_ip] if now - t < 60
-        ]
-
-        if len(self._requests[client_ip]) >= self.rpm:
+        key = f"rate:{client_ip}"
+        count = await cache.increment(key)
+        if count == 1:
+            await cache.expire(key, 60)
+        if count > self.rpm:
             return Response(
                 content='{"detail": "Rate limit exceeded. Try again in a minute."}',
                 status_code=429,
                 media_type="application/json",
                 headers={"Retry-After": "60"},
             )
-
-        self._requests[client_ip].append(now)
         return await call_next(request)
 
 
@@ -69,8 +60,14 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
 
         duration_ms = (time.time() - start) * 1000
         logger.info(
-            f"[{request_id}] {request.method} {request.url.path} "
-            f"→ {response.status_code} ({duration_ms:.0f}ms)"
+            "request",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "duration_ms": round(duration_ms),
+            },
         )
 
         response.headers["X-Request-ID"] = request_id
@@ -78,15 +75,13 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# ── Audit Trail (in-memory for dev) ──────────
+# ── Audit Trail ──────────────────────────────
 
 class AuditTrail:
     """
     Records security-relevant actions for compliance.
-    In production, writes to the audit_log database table.
+    Persists to the audit_logs database table (fire-and-forget).
     """
-
-    _log: list[dict] = []
 
     @classmethod
     def record(
@@ -97,7 +92,7 @@ class AuditTrail:
         resource_id: str = None,
         details: dict = None,
         ip_address: str = None,
-    ):
+    ) -> dict:
         entry = {
             "id": str(uuid.uuid4()),
             "timestamp": time.time(),
@@ -108,22 +103,63 @@ class AuditTrail:
             "details": details or {},
             "ip_address": ip_address,
         }
-        cls._log.append(entry)
-        # Keep last 10000 entries in memory
-        if len(cls._log) > 10000:
-            cls._log = cls._log[-5000:]
+        try:
+            asyncio.get_running_loop().create_task(cls._persist(entry))
+        except RuntimeError:
+            pass  # No running event loop (e.g. during tests / startup)
         return entry
 
     @classmethod
-    def query(
+    async def _persist(cls, entry: dict):
+        from datetime import datetime as _dt
+        from app.database import async_session, AuditLog
+        try:
+            async with async_session() as session:
+                session.add(AuditLog(
+                    id=entry["id"],
+                    timestamp=_dt.utcfromtimestamp(entry["timestamp"]),
+                    action=entry["action"],
+                    user_id=entry.get("user_id"),
+                    resource_type=entry.get("resource_type"),
+                    resource_id=entry.get("resource_id"),
+                    details=entry.get("details", {}),
+                    ip_address=entry.get("ip_address"),
+                ))
+                await session.commit()
+        except Exception:
+            logger.debug("AuditTrail._persist failed", exc_info=True)
+
+    @classmethod
+    async def query(
         cls,
         user_id: str = None,
         action: str = None,
         limit: int = 50,
     ) -> list[dict]:
-        results = cls._log
-        if user_id:
-            results = [e for e in results if e.get("user_id") == user_id]
-        if action:
-            results = [e for e in results if e.get("action") == action]
-        return list(reversed(results[:limit]))
+        from sqlalchemy import select
+        from app.database import async_session, AuditLog
+        try:
+            async with async_session() as session:
+                q = select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(limit)
+                if user_id:
+                    q = q.where(AuditLog.user_id == user_id)
+                if action:
+                    q = q.where(AuditLog.action == action)
+                result = await session.execute(q)
+                rows = result.scalars().all()
+            return [
+                {
+                    "id": r.id,
+                    "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+                    "action": r.action,
+                    "user_id": r.user_id,
+                    "resource_type": r.resource_type,
+                    "resource_id": r.resource_id,
+                    "details": r.details,
+                    "ip_address": r.ip_address,
+                }
+                for r in rows
+            ]
+        except Exception:
+            logger.debug("AuditTrail.query failed", exc_info=True)
+            return []

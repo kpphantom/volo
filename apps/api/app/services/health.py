@@ -277,6 +277,7 @@ class HealthService:
             {
                 "date": (base - timedelta(days=i)).strftime("%Y-%m-%d"),
                 "steps": random.randint(4000, 14000),
+                "_demo": True,
             }
             for i in range(days)
         ]
@@ -290,6 +291,7 @@ class HealthService:
                 "avg_bpm": random.randint(62, 78),
                 "min_bpm": random.randint(48, 58),
                 "max_bpm": random.randint(110, 165),
+                "_demo": True,
             }
             for i in range(days)
         ]
@@ -302,6 +304,7 @@ class HealthService:
                 "date": (base - timedelta(days=i)).strftime("%Y-%m-%d"),
                 "hours": round(random.uniform(5.5, 9.0), 1),
                 "quality": random.choice(["good", "fair", "poor"]),
+                "_demo": True,
             }
             for i in range(days)
         ]
@@ -309,11 +312,11 @@ class HealthService:
     def _demo_workouts(self) -> list[dict]:
         base = datetime.now(timezone.utc)
         return [
-            {"id": "w1", "name": "Morning Run", "type": "Running", "date": (base - timedelta(days=1)).isoformat(), "duration_mins": 32, "calories": 340},
-            {"id": "w2", "name": "Yoga Flow", "type": "Yoga", "date": (base - timedelta(days=2)).isoformat(), "duration_mins": 45, "calories": 180},
-            {"id": "w3", "name": "Strength Training", "type": "Strength", "date": (base - timedelta(days=3)).isoformat(), "duration_mins": 55, "calories": 420},
-            {"id": "w4", "name": "Evening Walk", "type": "Walking", "date": (base - timedelta(days=4)).isoformat(), "duration_mins": 28, "calories": 120},
-            {"id": "w5", "name": "HIIT Session", "type": "HIIT", "date": (base - timedelta(days=6)).isoformat(), "duration_mins": 25, "calories": 380},
+            {"id": "w1", "name": "Morning Run", "type": "Running", "date": (base - timedelta(days=1)).isoformat(), "duration_mins": 32, "calories": 340, "_demo": True},
+            {"id": "w2", "name": "Yoga Flow", "type": "Yoga", "date": (base - timedelta(days=2)).isoformat(), "duration_mins": 45, "calories": 180, "_demo": True},
+            {"id": "w3", "name": "Strength Training", "type": "Strength", "date": (base - timedelta(days=3)).isoformat(), "duration_mins": 55, "calories": 420, "_demo": True},
+            {"id": "w4", "name": "Evening Walk", "type": "Walking", "date": (base - timedelta(days=4)).isoformat(), "duration_mins": 28, "calories": 120, "_demo": True},
+            {"id": "w5", "name": "HIIT Session", "type": "HIIT", "date": (base - timedelta(days=6)).isoformat(), "duration_mins": 25, "calories": 380, "_demo": True},
         ]
 
     def _demo_body(self) -> dict:
@@ -322,4 +325,5 @@ class HealthService:
             "height_m": 1.78,
             "body_fat_pct": 18.5,
             "bmi": round(75.2 / (1.78 ** 2), 1),
+            "_demo": True,
         }

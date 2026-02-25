@@ -6,15 +6,14 @@ Manage automated recurring tasks, backed by PostgreSQL.
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.auth import get_current_user, CurrentUser
 from app.database import async_session, StandingOrder
 
 router = APIRouter()
-
-DEFAULT_USER = "dev-user"
 
 
 class StandingOrderCreate(BaseModel):
@@ -50,22 +49,22 @@ def _order_dict(o):
 
 
 @router.get("/standing-orders")
-async def list_standing_orders():
+async def list_standing_orders(current_user: CurrentUser = Depends(get_current_user)):
     """List all standing orders."""
     async with async_session() as session:
         result = await session.execute(
-            select(StandingOrder).where(StandingOrder.user_id == DEFAULT_USER)
+            select(StandingOrder).where(StandingOrder.user_id == current_user.user_id)
         )
         orders = result.scalars().all()
     return {"standing_orders": [_order_dict(o) for o in orders], "total": len(orders)}
 
 
 @router.post("/standing-orders")
-async def create_standing_order(body: StandingOrderCreate):
+async def create_standing_order(body: StandingOrderCreate, current_user: CurrentUser = Depends(get_current_user)):
     """Create a new standing order."""
     async with async_session() as session:
         order = StandingOrder(
-            user_id=DEFAULT_USER,
+            user_id=current_user.user_id,
             name=body.name,
             description=body.description,
             trigger_type=body.trigger_type,
@@ -80,11 +79,14 @@ async def create_standing_order(body: StandingOrderCreate):
 
 
 @router.get("/standing-orders/{order_id}")
-async def get_standing_order(order_id: str):
+async def get_standing_order(order_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """Get a specific standing order."""
     async with async_session() as session:
         result = await session.execute(
-            select(StandingOrder).where(StandingOrder.id == order_id)
+            select(StandingOrder).where(
+                StandingOrder.id == order_id,
+                StandingOrder.user_id == current_user.user_id,
+            )
         )
         order = result.scalar_one_or_none()
     if not order:
@@ -93,11 +95,14 @@ async def get_standing_order(order_id: str):
 
 
 @router.patch("/standing-orders/{order_id}")
-async def update_standing_order(order_id: str, body: StandingOrderUpdate):
+async def update_standing_order(order_id: str, body: StandingOrderUpdate, current_user: CurrentUser = Depends(get_current_user)):
     """Update a standing order."""
     async with async_session() as session:
         result = await session.execute(
-            select(StandingOrder).where(StandingOrder.id == order_id)
+            select(StandingOrder).where(
+                StandingOrder.id == order_id,
+                StandingOrder.user_id == current_user.user_id,
+            )
         )
         order = result.scalar_one_or_none()
         if not order:
@@ -120,11 +125,14 @@ async def update_standing_order(order_id: str, body: StandingOrderUpdate):
 
 
 @router.delete("/standing-orders/{order_id}")
-async def delete_standing_order(order_id: str):
+async def delete_standing_order(order_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """Delete a standing order."""
     async with async_session() as session:
         result = await session.execute(
-            select(StandingOrder).where(StandingOrder.id == order_id)
+            select(StandingOrder).where(
+                StandingOrder.id == order_id,
+                StandingOrder.user_id == current_user.user_id,
+            )
         )
         order = result.scalar_one_or_none()
         if not order:
@@ -135,11 +143,14 @@ async def delete_standing_order(order_id: str):
 
 
 @router.post("/standing-orders/{order_id}/run")
-async def run_standing_order(order_id: str):
+async def run_standing_order(order_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """Manually trigger a standing order."""
     async with async_session() as session:
         result = await session.execute(
-            select(StandingOrder).where(StandingOrder.id == order_id)
+            select(StandingOrder).where(
+                StandingOrder.id == order_id,
+                StandingOrder.user_id == current_user.user_id,
+            )
         )
         order = result.scalar_one_or_none()
         if not order:

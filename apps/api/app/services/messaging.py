@@ -420,6 +420,7 @@ class MessagingService:
                 "chat_title": msg["from"],
                 "read": i > 0,
                 "type": "text",
+                "_demo": True,
             }
             for i, msg in enumerate(demos.get(platform, []))
         ]
