@@ -150,12 +150,12 @@ async def _dispatch_action(action: dict, user_id: str, order_id: str) -> dict:
 
     if action_type == "notification":
         try:
-            from app.services.notifications import notification_service
+            from app.services.notifications import notifications as notification_service
             await notification_service.create(
                 user_id=user_id,
+                type=action.get("level", "info"),
                 title=action.get("title", "Standing Order"),
-                message=action.get("message", ""),
-                notification_type=action.get("level", "info"),
+                body=action.get("message", ""),
             )
             return {"type": action_type, "status": "executed"}
         except Exception as e:
@@ -163,13 +163,13 @@ async def _dispatch_action(action: dict, user_id: str, order_id: str) -> dict:
 
     if action_type in ("message", "chat"):
         # Agent dispatch requires a full conversation context — enqueue for background execution
-        asyncio.ensure_future(AuditTrail.record(
+        AuditTrail.record(
             user_id=user_id,
             action="standing_order.message_queued",
             resource_type="standing_order",
             resource_id=order_id,
             details={"content": action.get("content", action.get("message", ""))},
-        ))
+        )
         return {"type": action_type, "status": "queued"}
 
     if action_type == "webhook":
@@ -212,7 +212,7 @@ async def run_standing_order(order_id: str, current_user: CurrentUser = Depends(
         await session.commit()
         await session.refresh(order)
 
-    await AuditTrail.record(
+    AuditTrail.record(
         user_id=current_user.user_id,
         action="standing_order.run",
         resource_type="standing_order",

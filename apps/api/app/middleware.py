@@ -26,6 +26,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.rpm = requests_per_minute
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        import os
+        if os.getenv("TESTING") == "1":
+            return await call_next(request)
         if request.url.path in ("/health", "/", "/docs", "/openapi.json"):
             return await call_next(request)
 
