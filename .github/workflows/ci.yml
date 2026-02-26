@@ -97,6 +97,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://volo:volo@localhost:5432/volo_test
           REDIS_URL: redis://localhost:6379
           APP_ENV: test
+          TESTING: "1"
           JWT_SECRET: test-secret
           APP_SECRET_KEY: test-secret
         run: pytest tests/ -v --cov=app --cov-report=xml
