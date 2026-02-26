@@ -131,7 +131,6 @@ async def get_setup_script(agent_key: str, request: Request):
 
     # Build URLs from config, not from untrusted request headers
     base_url = settings.frontend_url.rstrip("/")
-    ws_scheme = "wss" if base_url.startswith("https") else "ws"
     ws_url = base_url.replace("https://", "wss://").replace("http://", "ws://")
 
     script = f'''#!/bin/bash
