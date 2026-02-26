@@ -4,11 +4,13 @@ Persistent memory storage in PostgreSQL.
 The agent never forgets — memories survive restarts.
 """
 
+import json
 from typing import Optional
 from datetime import datetime
 from sqlalchemy import select
 
 from app.database import async_session, Memory
+from app.services.cache import cache
 
 
 class MemoryManager:
@@ -54,6 +56,14 @@ class MemoryManager:
         limit: int = 10,
     ) -> list[dict]:
         """Search memories by keyword match. (pgvector semantic search can be added later.)"""
+        cache_key = f"memsearch:{user_id}:{category or ''}:{limit}:{query}"
+        cached = await cache.get(cache_key)
+        if cached is not None:
+            try:
+                return json.loads(cached)
+            except Exception:
+                pass
+
         async with async_session() as session:
             q = select(Memory).where(
                 Memory.user_id == user_id,
@@ -66,12 +76,14 @@ class MemoryManager:
             result = await session.execute(q)
             memories = result.scalars().all()
 
-            # Update last_accessed_at
+            # Batch-update last_accessed_at in a single commit
+            now = datetime.utcnow()
             for m in memories:
-                m.last_accessed_at = datetime.utcnow()
-            await session.commit()
+                m.last_accessed_at = now
+            if memories:
+                await session.commit()
 
-            return [
+            rows = [
                 {
                     "id": m.id,
                     "user_id": m.user_id,
@@ -84,6 +96,9 @@ class MemoryManager:
                 }
                 for m in memories
             ]
+
+        await cache.set(cache_key, json.dumps(rows), ttl=60)
+        return rows
 
     async def get_all(
         self,

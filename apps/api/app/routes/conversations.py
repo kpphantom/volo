@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth import get_current_user, CurrentUser
 from app.database import async_session, Conversation, ChatMessage
+from app.services.cache import cache
 
 router = APIRouter()
 
@@ -48,6 +49,10 @@ def _msg_dict(m):
     }
 
 
+def _conv_list_cache_key(user_id: str, limit: int, offset: int, search: Optional[str]) -> str:
+    return f"convlist:{user_id}:{limit}:{offset}:{search or ''}"
+
+
 @router.get("/conversations")
 async def list_conversations(
     limit: int = Query(50, ge=1, le=200),
@@ -56,6 +61,11 @@ async def list_conversations(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """List all conversations, optionally filtered by search."""
+    cache_key = _conv_list_cache_key(current_user.user_id, limit, offset, search)
+    cached = await cache.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     async with async_session() as session:
         query = select(Conversation).where(Conversation.user_id == current_user.user_id)
 
@@ -69,18 +79,53 @@ async def list_conversations(
         result = await session.execute(query)
         convos = result.scalars().all()
 
-        conv_list = []
-        for c in convos:
-            last_msg_q = (
-                select(ChatMessage.content)
-                .where(ChatMessage.conversation_id == c.id)
-                .order_by(ChatMessage.created_at.desc())
-                .limit(1)
+        # Fetch all last-message previews in a single query to avoid N+1
+        conv_ids = [c.id for c in convos]
+        previews: dict[str, str] = {}
+        if conv_ids:
+            # Subquery: latest message per conversation
+            from sqlalchemy import and_
+            latest_subq = (
+                select(
+                    ChatMessage.conversation_id,
+                    func.max(ChatMessage.created_at).label("max_ts"),
+                )
+                .where(ChatMessage.conversation_id.in_(conv_ids))
+                .group_by(ChatMessage.conversation_id)
+                .subquery()
             )
-            last_msg = (await session.execute(last_msg_q)).scalar()
-            conv_list.append(_conv_dict(c, preview=(last_msg or "")[:100]))
+            preview_q = select(ChatMessage.conversation_id, ChatMessage.content).join(
+                latest_subq,
+                and_(
+                    ChatMessage.conversation_id == latest_subq.c.conversation_id,
+                    ChatMessage.created_at == latest_subq.c.max_ts,
+                ),
+            )
+            for row in (await session.execute(preview_q)).all():
+                previews[row.conversation_id] = (row.content or "")[:100]
 
-    return {"conversations": conv_list, "total": total, "limit": limit, "offset": offset}
+        conv_list = [_conv_dict(c, preview=previews.get(c.id, "")) for c in convos]
+
+    payload = {"conversations": conv_list, "total": total, "limit": limit, "offset": offset}
+    await cache.set_json(cache_key, payload, ttl=30)
+    return payload
+
+
+async def _invalidate_conv_list(user_id: str) -> None:
+    """Delete all cached conversation-list pages for this user."""
+    # We use a pattern delete — delete keys matching convlist:{user_id}:*
+    # When Redis is connected use SCAN+DEL; in fallback mode do a prefix scan.
+    try:
+        if cache.is_connected:
+            async for key in cache._redis.scan_iter(f"convlist:{user_id}:*"):
+                await cache._redis.delete(key)
+        else:
+            prefix = f"convlist:{user_id}:"
+            stale = [k for k in cache._fallback._data if k.startswith(prefix)]
+            for k in stale:
+                cache._fallback.delete(k)
+    except Exception:
+        pass
 
 
 @router.post("/conversations")
@@ -94,7 +139,8 @@ async def create_conversation(body: CreateConversationRequest, current_user: Cur
         session.add(conv)
         await session.commit()
         await session.refresh(conv)
-        return _conv_dict(conv)
+    await _invalidate_conv_list(current_user.user_id)
+    return _conv_dict(conv)
 
 
 @router.get("/conversations/{conversation_id}")
@@ -154,6 +200,7 @@ async def delete_conversation(conversation_id: str, current_user: CurrentUser = 
         await session.delete(conv)
         await session.commit()
 
+    await _invalidate_conv_list(current_user.user_id)
     return {"deleted": True}
 
 
@@ -177,7 +224,8 @@ async def update_conversation(conversation_id: str, body: CreateConversationRequ
         await session.commit()
         await session.refresh(conv)
 
-        return _conv_dict(conv)
+    await _invalidate_conv_list(current_user.user_id)
+    return _conv_dict(conv)
 
 
 @router.post("/conversations/{conversation_id}/messages")
