@@ -32,7 +32,6 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/fitness.body.read",
     "https://www.googleapis.com/auth/photoslibrary.readonly",
     "https://www.googleapis.com/auth/tasks.readonly",
-    "https://www.googleapis.com/auth/keep.readonly",
 ]
 
 
