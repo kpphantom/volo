@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   MessageSquare,
   Plus,
@@ -49,11 +49,57 @@ const defaultIntegrations: IntegrationInfo[] = [
   { id: 'social', name: 'Social', icon: Globe, connected: false },
 ];
 
+const navGroups: { labelKey: string; items: { id: Page; icon: typeof LayoutDashboard; labelKey: string }[] }[] = [
+  {
+    labelKey: 'group.main',
+    items: [
+      { id: 'dashboard', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
+      { id: 'conversations', icon: History, labelKey: 'nav.history' },
+      { id: 'standing-orders', icon: Clock, labelKey: 'nav.standingOrders' },
+    ],
+  },
+  {
+    labelKey: 'group.socialComms',
+    items: [
+      { id: 'social', icon: Share2, labelKey: 'nav.socialFeed' },
+      { id: 'messages', icon: MessagesSquare, labelKey: 'nav.messages' },
+    ],
+  },
+  {
+    labelKey: 'group.tools',
+    items: [
+      { id: 'google', icon: Chrome, labelKey: 'nav.google' },
+      { id: 'youtube', icon: Youtube, labelKey: 'nav.youtube' },
+      { id: 'vscode', icon: Terminal, labelKey: 'nav.vscode' },
+    ],
+  },
+  {
+    labelKey: 'group.insights',
+    items: [
+      { id: 'activity', icon: Activity, labelKey: 'nav.activity' },
+      { id: 'analytics', icon: BarChart3, labelKey: 'nav.analytics' },
+      { id: 'health', icon: Heart, labelKey: 'nav.health' },
+      { id: 'finance', icon: Wallet, labelKey: 'nav.finance' },
+    ],
+  },
+  {
+    labelKey: 'group.more',
+    items: [
+      { id: 'marketplace', icon: Package, labelKey: 'nav.marketplace' },
+      { id: 'docs', icon: BookOpen, labelKey: 'nav.docs' },
+      { id: 'settings', icon: Settings, labelKey: 'nav.settings' },
+    ],
+  },
+];
+
 export function Sidebar() {
   const [activeTab, setActiveTab] = useState<'chats' | 'integrations'>('chats');
   const [integrations, setIntegrations] = useState<IntegrationInfo[]>(defaultIntegrations);
   const { messages, clearMessages } = useChatStore();
-  const { sidebarOpen, currentPage, setPage, toggleSidebar } = useAppStore();
+  const sidebarOpen   = useAppStore(s => s.sidebarOpen);
+  const currentPage   = useAppStore(s => s.currentPage);
+  const setPage       = useAppStore(s => s.setPage);
+  const toggleSidebar = useAppStore(s => s.toggleSidebar);
   const { t } = useTranslation();
 
   // Fetch real integration status
@@ -82,53 +128,10 @@ export function Sidebar() {
     ? messages[0]?.content.slice(0, 40) + (messages[0]?.content.length > 40 ? '...' : '')
     : '';
 
-  const handleNewConversation = () => {
+  const handleNewConversation = useCallback(() => {
     clearMessages();
     setPage('chat');
-  };
-
-  const navGroups: { labelKey: string; items: { id: Page; icon: typeof LayoutDashboard; labelKey: string }[] }[] = [
-    {
-      labelKey: 'group.main',
-      items: [
-        { id: 'dashboard', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
-        { id: 'conversations', icon: History, labelKey: 'nav.history' },
-        { id: 'standing-orders', icon: Clock, labelKey: 'nav.standingOrders' },
-      ],
-    },
-    {
-      labelKey: 'group.socialComms',
-      items: [
-        { id: 'social', icon: Share2, labelKey: 'nav.socialFeed' },
-        { id: 'messages', icon: MessagesSquare, labelKey: 'nav.messages' },
-      ],
-    },
-    {
-      labelKey: 'group.tools',
-      items: [
-        { id: 'google', icon: Chrome, labelKey: 'nav.google' },
-        { id: 'youtube', icon: Youtube, labelKey: 'nav.youtube' },
-        { id: 'vscode', icon: Terminal, labelKey: 'nav.vscode' },
-      ],
-    },
-    {
-      labelKey: 'group.insights',
-      items: [
-        { id: 'activity', icon: Activity, labelKey: 'nav.activity' },
-        { id: 'analytics', icon: BarChart3, labelKey: 'nav.analytics' },
-        { id: 'health', icon: Heart, labelKey: 'nav.health' },
-        { id: 'finance', icon: Wallet, labelKey: 'nav.finance' },
-      ],
-    },
-    {
-      labelKey: 'group.more',
-      items: [
-        { id: 'marketplace', icon: Package, labelKey: 'nav.marketplace' },
-        { id: 'docs', icon: BookOpen, labelKey: 'nav.docs' },
-        { id: 'settings', icon: Settings, labelKey: 'nav.settings' },
-      ],
-    },
-  ];
+  }, [clearMessages, setPage]);
 
   return (
     <aside

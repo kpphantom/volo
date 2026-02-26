@@ -16,9 +16,23 @@ import { useAppStore } from '@/stores/appStore';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
+function formatDate(ts: string) {
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  if (diff < 86400000) return 'Today';
+  if (diff < 172800000) return 'Yesterday';
+  return d.toLocaleDateString();
+}
+
 export function ConversationHistory() {
-  const { conversations, loading, searchQuery, fetchConversations, deleteConversation, renameConversation, setSearchQuery } =
-    useConversationStore();
+  const conversations      = useConversationStore(s => s.conversations);
+  const loading            = useConversationStore(s => s.loading);
+  const searchQuery        = useConversationStore(s => s.searchQuery);
+  const fetchConversations = useConversationStore(s => s.fetchConversations);
+  const deleteConversation = useConversationStore(s => s.deleteConversation);
+  const renameConversation = useConversationStore(s => s.renameConversation);
+  const setSearchQuery     = useConversationStore(s => s.setSearchQuery);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
@@ -62,7 +76,7 @@ export function ConversationHistory() {
     setEditingId(null);
   };
 
-  const openConversation = async (id: string) => {
+  const openConversation = useCallback(async (id: string) => {
     try {
       // Fetch messages for this conversation from the API
       const data = await api.get<{ messages?: Array<{ role: string; content: string; created_at: string }> }>(`/api/conversations/${id}/messages`);
@@ -89,7 +103,7 @@ export function ConversationHistory() {
       useAppStore.getState().setPage('chat');
       toast.error('Could not load conversation messages');
     }
-  };
+  }, []);
 
   const exportConversation = async (conv: { id: string; title: string }) => {
     setMenuOpen(null);
@@ -112,15 +126,6 @@ export function ConversationHistory() {
     } catch {
       toast.error('Failed to export conversation');
     }
-  };
-
-  const formatDate = (ts: string) => {
-    const d = new Date(ts);
-    const now = new Date();
-    const diff = now.getTime() - d.getTime();
-    if (diff < 86400000) return 'Today';
-    if (diff < 172800000) return 'Yesterday';
-    return d.toLocaleDateString();
   };
 
   return (

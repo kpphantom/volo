@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, memo } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { toast } from 'sonner';
 
@@ -29,7 +29,94 @@ interface ChatMessageProps {
   message: Message;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+const REMARK_PLUGINS = [remarkGfm];
+
+const STATIC_MD_COMPONENTS = {
+  code({ className, children, ...props }: any) {
+    const isInline = !className;
+    return isInline ? (
+      <code
+        className="bg-white/10 text-brand-300 px-1.5 py-0.5 rounded text-xs font-mono"
+        {...props}
+      >
+        {children}
+      </code>
+    ) : (
+      <code className={cn(className, 'text-xs')} {...props}>
+        {children}
+      </code>
+    );
+  },
+  table({ children, ...props }: any) {
+    return (
+      <div className="overflow-x-auto my-3">
+        <table className="w-full text-xs border-collapse" {...props}>
+          {children}
+        </table>
+      </div>
+    );
+  },
+  th({ children, ...props }: any) {
+    return (
+      <th className="border border-white/10 px-3 py-2 bg-white/5 text-left text-zinc-300 font-medium" {...props}>
+        {children}
+      </th>
+    );
+  },
+  td({ children, ...props }: any) {
+    return (
+      <td className="border border-white/10 px-3 py-2 text-zinc-400" {...props}>
+        {children}
+      </td>
+    );
+  },
+  a({ href, children, ...props }: any) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-brand-400 hover:text-brand-300 underline underline-offset-2"
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  },
+  ul({ children, ...props }: any) {
+    return <ul className="list-disc list-inside space-y-1 my-2" {...props}>{children}</ul>;
+  },
+  ol({ children, ...props }: any) {
+    return <ol className="list-decimal list-inside space-y-1 my-2" {...props}>{children}</ol>;
+  },
+  h1({ children, ...props }: any) {
+    return <h1 className="text-lg font-bold text-white mt-4 mb-2" {...props}>{children}</h1>;
+  },
+  h2({ children, ...props }: any) {
+    return <h2 className="text-base font-bold text-white mt-3 mb-2" {...props}>{children}</h2>;
+  },
+  h3({ children, ...props }: any) {
+    return <h3 className="text-sm font-bold text-zinc-200 mt-3 mb-1" {...props}>{children}</h3>;
+  },
+  blockquote({ children, ...props }: any) {
+    return (
+      <blockquote className="border-l-2 border-brand-500 pl-3 my-2 text-zinc-400 italic" {...props}>
+        {children}
+      </blockquote>
+    );
+  },
+  p({ children, ...props }: any) {
+    return <p className="my-1.5 leading-relaxed" {...props}>{children}</p>;
+  },
+  strong({ children, ...props }: any) {
+    return <strong className="font-semibold text-zinc-200" {...props}>{children}</strong>;
+  },
+  hr(props: any) {
+    return <hr className="border-white/10 my-4" {...props} />;
+  },
+};
+
+export const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
   const [copiedBlock, setCopiedBlock] = useState<string | null>(null);
@@ -101,6 +188,34 @@ export function ChatMessage({ message }: ChatMessageProps) {
     setCopiedBlock(code);
     setTimeout(() => setCopiedBlock(null), 2000);
   }, []);
+
+  const components = useMemo(() => ({
+    ...STATIC_MD_COMPONENTS,
+    pre({ children, ...props }: any) {
+      const codeContent = extractTextFromChildren(children);
+      return (
+        <div className="relative group/code my-3">
+          <button
+            onClick={() => handleCopyCode(codeContent)}
+            className="absolute top-2 right-2 p-2 sm:p-1.5 rounded-md bg-white/10 sm:bg-white/5 hover:bg-white/10 text-zinc-400 sm:text-zinc-500 hover:text-zinc-300 transition-all opacity-100 sm:opacity-0 sm:group-hover/code:opacity-100 z-10"
+            aria-label="Copy code"
+          >
+            {copiedBlock === codeContent ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Clipboard className="w-3.5 h-3.5" />
+            )}
+          </button>
+          <pre
+            className="bg-black/40 rounded-xl p-4 overflow-x-auto border border-white/5"
+            {...props}
+          >
+            {children}
+          </pre>
+        </div>
+      );
+    },
+  }), [handleCopyCode, copiedBlock]);
 
   return (
     <div
@@ -192,115 +307,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
           ) : (
             <div className="prose prose-invert prose-sm max-w-none break-words">
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  code({ className, children, ...props }) {
-                    const isInline = !className;
-                    return isInline ? (
-                      <code
-                        className="bg-white/10 text-brand-300 px-1.5 py-0.5 rounded text-xs font-mono"
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    ) : (
-                      <code className={cn(className, 'text-xs')} {...props}>
-                        {children}
-                      </code>
-                    );
-                  },
-                  pre({ children, ...props }) {
-                    const codeContent = extractTextFromChildren(children);
-                    return (
-                      <div className="relative group/code my-3">
-                        <button
-                          onClick={() => handleCopyCode(codeContent)}
-                          className="absolute top-2 right-2 p-2 sm:p-1.5 rounded-md bg-white/10 sm:bg-white/5 hover:bg-white/10 text-zinc-400 sm:text-zinc-500 hover:text-zinc-300 transition-all opacity-100 sm:opacity-0 sm:group-hover/code:opacity-100 z-10"
-                          aria-label="Copy code"
-                        >
-                          {copiedBlock === codeContent ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Clipboard className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <pre
-                          className="bg-black/40 rounded-xl p-4 overflow-x-auto border border-white/5"
-                          {...props}
-                        >
-                          {children}
-                        </pre>
-                      </div>
-                    );
-                  },
-                  table({ children, ...props }) {
-                    return (
-                      <div className="overflow-x-auto my-3">
-                        <table className="w-full text-xs border-collapse" {...props}>
-                          {children}
-                        </table>
-                      </div>
-                    );
-                  },
-                  th({ children, ...props }) {
-                    return (
-                      <th className="border border-white/10 px-3 py-2 bg-white/5 text-left text-zinc-300 font-medium" {...props}>
-                        {children}
-                      </th>
-                    );
-                  },
-                  td({ children, ...props }) {
-                    return (
-                      <td className="border border-white/10 px-3 py-2 text-zinc-400" {...props}>
-                        {children}
-                      </td>
-                    );
-                  },
-                  a({ href, children, ...props }) {
-                    return (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-brand-400 hover:text-brand-300 underline underline-offset-2"
-                        {...props}
-                      >
-                        {children}
-                      </a>
-                    );
-                  },
-                  ul({ children, ...props }) {
-                    return <ul className="list-disc list-inside space-y-1 my-2" {...props}>{children}</ul>;
-                  },
-                  ol({ children, ...props }) {
-                    return <ol className="list-decimal list-inside space-y-1 my-2" {...props}>{children}</ol>;
-                  },
-                  h1({ children, ...props }) {
-                    return <h1 className="text-lg font-bold text-white mt-4 mb-2" {...props}>{children}</h1>;
-                  },
-                  h2({ children, ...props }) {
-                    return <h2 className="text-base font-bold text-white mt-3 mb-2" {...props}>{children}</h2>;
-                  },
-                  h3({ children, ...props }) {
-                    return <h3 className="text-sm font-bold text-zinc-200 mt-3 mb-1" {...props}>{children}</h3>;
-                  },
-                  blockquote({ children, ...props }) {
-                    return (
-                      <blockquote className="border-l-2 border-brand-500 pl-3 my-2 text-zinc-400 italic" {...props}>
-                        {children}
-                      </blockquote>
-                    );
-                  },
-                  p({ children, ...props }) {
-                    return <p className="my-1.5 leading-relaxed" {...props}>{children}</p>;
-                  },
-                  strong({ children, ...props }) {
-                    return <strong className="font-semibold text-zinc-200" {...props}>{children}</strong>;
-                  },
-                  hr(props) {
-                    return <hr className="border-white/10 my-4" {...props} />;
-                  },
-                }}
+                remarkPlugins={REMARK_PLUGINS}
+                components={components}
               >
                 {message.content}
               </ReactMarkdown>
@@ -354,7 +362,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
     </div>
   );
-}
+});
 
 function formatToolName(name: string): string {
   return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

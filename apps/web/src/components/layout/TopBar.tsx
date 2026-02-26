@@ -36,10 +36,18 @@ const pageKeyMap: Record<string, string> = {
   vscode: 'page.vscode',
 };
 
+const themeOptions: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [
+  { mode: 'light', icon: Sun, label: 'Light' },
+  { mode: 'dark', icon: Moon, label: 'Dark' },
+  { mode: 'system', icon: Monitor, label: 'System' },
+];
+
 export function TopBar({ onToggleSidebar, onOpenCommandPalette }: TopBarProps) {
   const currentPage = useAppStore((s) => s.currentPage);
-  const { user, logout } = useAuthStore();
-  const { mode, setMode } = useThemeStore();
+  const user    = useAuthStore(s => s.user);
+  const logout  = useAuthStore(s => s.logout);
+  const mode    = useThemeStore(s => s.mode);
+  const setMode = useThemeStore(s => s.setMode);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const { t } = useTranslation();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -56,11 +64,6 @@ export function TopBar({ onToggleSidebar, onOpenCommandPalette }: TopBarProps) {
     return () => document.removeEventListener('mousedown', handle);
   }, []);
 
-  const themeOptions: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [
-    { mode: 'light', icon: Sun, label: 'Light' },
-    { mode: 'dark', icon: Moon, label: 'Dark' },
-    { mode: 'system', icon: Monitor, label: 'System' },
-  ];
 
   return (
     <header

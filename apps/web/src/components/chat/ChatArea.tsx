@@ -11,7 +11,12 @@ import { useChatStore } from '@/stores/chatStore';
 import { toast } from 'sonner';
 
 export function ChatArea() {
-  const { messages, isThinking, sendMessage, queuedMessage, setQueuedMessage, stopGenerating } = useChatStore();
+  const messages         = useChatStore(s => s.messages);
+  const isThinking       = useChatStore(s => s.isThinking);
+  const sendMessage      = useChatStore(s => s.sendMessage);
+  const queuedMessage    = useChatStore(s => s.queuedMessage);
+  const setQueuedMessage = useChatStore(s => s.setQueuedMessage);
+  const stopGenerating   = useChatStore(s => s.stopGenerating);
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
