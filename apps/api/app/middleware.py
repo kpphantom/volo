@@ -7,6 +7,7 @@ import asyncio
 import time
 import uuid
 import logging
+from datetime import datetime, timedelta
 from typing import Callable
 
 from fastapi import Request, Response
@@ -128,6 +129,30 @@ class AuditTrail:
                 await session.commit()
         except Exception:
             logger.debug("AuditTrail._persist failed", exc_info=True)
+
+    @classmethod
+    async def purge_old_logs(cls, retention_days: int = 90) -> int:
+        """
+        Delete audit log rows older than retention_days.
+        Returns the number of rows deleted.
+        Should be called periodically (e.g. once per day at startup).
+        """
+        from sqlalchemy import delete
+        from app.database import async_session, AuditLog
+        cutoff = datetime.utcnow() - timedelta(days=retention_days)
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    delete(AuditLog).where(AuditLog.timestamp < cutoff)
+                )
+                await session.commit()
+                deleted = result.rowcount
+            if deleted:
+                logger.info("audit_log_purge", extra={"deleted": deleted, "retention_days": retention_days})
+            return deleted
+        except Exception:
+            logger.warning("AuditTrail.purge_old_logs failed", exc_info=True)
+            return 0
 
     @classmethod
     async def query(

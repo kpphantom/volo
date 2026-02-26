@@ -72,7 +72,7 @@ from app.routes import summarize as summarize_routes
 from app.routes import finance as finance_routes
 
 from app.database import init_db
-from app.middleware import RateLimitMiddleware, RequestLogMiddleware
+from app.middleware import RateLimitMiddleware, RequestLogMiddleware, AuditTrail
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -112,7 +112,20 @@ async def lifespan(app: FastAPI):
     print("✅ Agent keys loaded")
 
     print("🧠 Agent orchestrator ready")
+
+    # Start background audit-log retention job (runs once per day)
+    import asyncio as _asyncio
+
+    async def _audit_retention_loop():
+        while True:
+            await AuditTrail.purge_old_logs(retention_days=90)
+            await _asyncio.sleep(86_400)  # 24 h
+
+    retention_task = _asyncio.create_task(_audit_retention_loop())
+
     yield
+
+    retention_task.cancel()
     print("👋 Volo API shutting down...")
 
 
