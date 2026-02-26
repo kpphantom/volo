@@ -76,6 +76,7 @@ class Conversation(Base):
     __table_args__ = (
         Index("ix_conversations_user_id", "user_id"),
         Index("ix_conversations_updated_at", "updated_at"),
+        Index("ix_conversations_user_updated", "user_id", "updated_at"),
     )
 
     id = Column(String, primary_key=True, default=generate_uuid)
@@ -134,6 +135,7 @@ class Memory(Base):
     __table_args__ = (
         Index("ix_memories_user_id", "user_id"),
         Index("ix_memories_user_category", "user_id", "category"),
+        Index("ix_memories_user_created", "user_id", "created_at"),
     )
 
     id = Column(String, primary_key=True, default=generate_uuid)
@@ -242,6 +244,10 @@ class AuthenticatorAccount(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_user_timestamp", "user_id", "timestamp"),
+        Index("ix_audit_logs_action_timestamp", "action", "timestamp"),
+    )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     timestamp = Column(DateTime, default=datetime.utcnow)
@@ -262,9 +268,9 @@ else:
     engine = create_async_engine(
         settings.database_url,
         echo=False,
-        pool_size=20,
-        max_overflow=10,
-        pool_recycle=3600,
+        pool_size=50,
+        max_overflow=30,
+        pool_recycle=7200,
         pool_pre_ping=True,
     )
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
