@@ -2,6 +2,10 @@
 VOLO - Unified Messaging Service
 Aggregates messages from Telegram, WhatsApp, WhatsApp Business,
 iMessage, Signal, Discord, and Slack.
+
+Each platform is a MessagingAdapter subclass. MessagingService
+registers adapters and provides the unified inbox + per-platform
+delegation used by the route handlers.
 """
 
 import httpx
@@ -9,36 +13,38 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from app.config import settings
+from app.services.base_platform import MessagingAdapter
 
 
-class MessagingService:
-    """Unified inbox across all messaging platforms."""
+# ── Per-platform adapters ─────────────────────────────────────────────────────
 
-    def __init__(self):
-        self.telegram_token = settings.telegram_bot_token
-        self.whatsapp_token = settings.whatsapp_api_token
-        self.whatsapp_phone_id = settings.whatsapp_phone_id
-        self.whatsapp_biz_token = settings.whatsapp_business_token
-        self.whatsapp_biz_phone_id = settings.whatsapp_business_phone_id
-        self.signal_api_url = settings.signal_api_url
-        self.discord_bot_token = settings.discord_bot_token
-        self.slack_bot_token = settings.slack_bot_token
+class TelegramAdapter(MessagingAdapter):
+    def __init__(self, token: str):
+        self._token = token
 
-    # ── Telegram ────────────────────────────────────────────────────────
+    @property
+    def platform_id(self) -> str: return "telegram"
+    @property
+    def name(self) -> str: return "Telegram"
+    @property
+    def is_configured(self) -> bool: return bool(self._token)
+    @property
+    def icon(self) -> str: return "send"
+    @property
+    def color(self) -> str: return "#0088cc"
 
-    async def telegram_get_updates(self, limit: int = 50) -> list:
-        if not self.telegram_token:
-            return self._demo_messages("telegram")
+    async def get_messages(self, limit: int = 50) -> list[dict]:
+        if not self.is_configured:
+            return self._wrap_demo(self._demo_data())
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"https://api.telegram.org/bot{self.telegram_token}/getUpdates",
+                f"https://api.telegram.org/bot{self._token}/getUpdates",
                 params={"limit": limit, "allowed_updates": '["message"]'},
                 timeout=10.0,
             )
             if resp.status_code == 200:
-                data = resp.json()
                 messages = []
-                for update in data.get("result", []):
+                for update in resp.json().get("result", []):
                     msg = update.get("message", {})
                     if msg:
                         messages.append({
@@ -57,43 +63,84 @@ class MessagingService:
                 return messages
         return []
 
-    async def telegram_send(self, chat_id: str, text: str) -> dict:
-        if not self.telegram_token:
+    async def send_message(self, to: str, text: str, **kwargs) -> dict:
+        if not self.is_configured:
             return {"status": "demo", "message": "Telegram not configured"}
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"https://api.telegram.org/bot{self.telegram_token}/sendMessage",
-                json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+                f"https://api.telegram.org/bot{self._token}/sendMessage",
+                json={"chat_id": to, "text": text, "parse_mode": "Markdown"},
             )
             return resp.json()
 
-    # ── WhatsApp (Meta Cloud API) ───────────────────────────────────────
+    def _demo_data(self) -> list[dict]:
+        return [
+            {"from": "Alex Chen", "content": "hey, did you see the new release?", "from_username": "@alexchen"},
+            {"from": "Sarah K", "content": "Meeting at 3pm works for me", "from_username": "@sarahk"},
+            {"from": "Dev Group", "content": "CI/CD pipeline is green", "from_username": "devteam"},
+        ]
 
-    async def whatsapp_get_messages(self) -> list:
-        return self._demo_messages("whatsapp")
 
-    async def whatsapp_send(self, to: str, text: str) -> dict:
-        if not self.whatsapp_token:
+class WhatsAppAdapter(MessagingAdapter):
+    def __init__(self, token: str, phone_id: str):
+        self._token = token
+        self._phone_id = phone_id
+
+    @property
+    def platform_id(self) -> str: return "whatsapp"
+    @property
+    def name(self) -> str: return "WhatsApp"
+    @property
+    def is_configured(self) -> bool: return bool(self._token)
+    @property
+    def icon(self) -> str: return "message-circle"
+    @property
+    def color(self) -> str: return "#25D366"
+
+    async def get_messages(self, limit: int = 50) -> list[dict]:
+        return self._wrap_demo(self._demo_data())
+
+    async def send_message(self, to: str, text: str, **kwargs) -> dict:
+        if not self.is_configured:
             return {"status": "demo", "message": "WhatsApp not configured"}
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"https://graph.facebook.com/v18.0/{self.whatsapp_phone_id}/messages",
-                headers={"Authorization": f"Bearer {self.whatsapp_token}"},
+                f"https://graph.facebook.com/v18.0/{self._phone_id}/messages",
+                headers={"Authorization": f"Bearer {self._token}"},
                 json={"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": text}},
             )
             return resp.json()
 
-    # ── WhatsApp Business ───────────────────────────────────────────────
+    def _demo_data(self) -> list[dict]:
+        return [
+            {"from": "Mom", "content": "Call me when you get a chance", "from_username": "+1234567890"},
+            {"from": "Jake", "content": "Running 10 mins late", "from_username": "+1234567891"},
+        ]
 
-    async def whatsapp_biz_get_messages(self) -> list:
-        return self._demo_messages("whatsapp_business")
 
-    async def whatsapp_biz_send(self, to: str, text: str, template: Optional[str] = None) -> dict:
-        token = self.whatsapp_biz_token or self.whatsapp_token
-        phone_id = self.whatsapp_biz_phone_id or self.whatsapp_phone_id
-        if not token:
+class WhatsAppBizAdapter(MessagingAdapter):
+    def __init__(self, biz_token: str, biz_phone_id: str, fallback_token: str, fallback_phone_id: str):
+        self._token = biz_token or fallback_token
+        self._phone_id = biz_phone_id or fallback_phone_id
+
+    @property
+    def platform_id(self) -> str: return "whatsapp_business"
+    @property
+    def name(self) -> str: return "WhatsApp Business"
+    @property
+    def is_configured(self) -> bool: return bool(self._token)
+    @property
+    def icon(self) -> str: return "briefcase"
+    @property
+    def color(self) -> str: return "#128C7E"
+
+    async def get_messages(self, limit: int = 50) -> list[dict]:
+        return self._wrap_demo(self._demo_data())
+
+    async def send_message(self, to: str, text: str, template: str | None = None, **kwargs) -> dict:
+        if not self.is_configured:
             return {"status": "demo", "message": "WhatsApp Business not configured"}
-        payload = {"messaging_product": "whatsapp", "to": to}
+        payload: dict = {"messaging_product": "whatsapp", "to": to}
         if template:
             payload["type"] = "template"
             payload["template"] = {"name": template, "language": {"code": "en_US"}}
@@ -102,21 +149,37 @@ class MessagingService:
             payload["text"] = {"body": text}
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"https://graph.facebook.com/v18.0/{phone_id}/messages",
-                headers={"Authorization": f"Bearer {token}"},
+                f"https://graph.facebook.com/v18.0/{self._phone_id}/messages",
+                headers={"Authorization": f"Bearer {self._token}"},
                 json=payload,
             )
             return resp.json()
 
-    # ── iMessage (macOS Bridge) ─────────────────────────────────────────
+    def _demo_data(self) -> list[dict]:
+        return [
+            {"from": "Acme Corp", "content": "Your order #4521 has shipped!", "from_username": "+1800555001"},
+        ]
 
-    async def imessage_get_messages(self, limit: int = 50) -> list:
+
+class IMessageAdapter(MessagingAdapter):
+    @property
+    def platform_id(self) -> str: return "imessage"
+    @property
+    def name(self) -> str: return "iMessage"
+    @property
+    def is_configured(self) -> bool: return True  # always available on macOS
+    @property
+    def icon(self) -> str: return "message-square"
+    @property
+    def color(self) -> str: return "#34C759"
+
+    async def get_messages(self, limit: int = 50) -> list[dict]:
         try:
             import sqlite3
             import os as _os
             db_path = _os.path.expanduser("~/Library/Messages/chat.db")
             if not _os.path.exists(db_path):
-                return self._demo_messages("imessage")
+                return self._wrap_demo(self._demo_data())
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute(
@@ -141,20 +204,39 @@ class MessagingService:
             conn.close()
             return messages
         except Exception:
-            return self._demo_messages("imessage")
+            return self._wrap_demo(self._demo_data())
 
-    # ── Signal ──────────────────────────────────────────────────────────
+    def _demo_data(self) -> list[dict]:
+        return [
+            {"from": "Tom", "content": "Check out this link", "from_username": "tom@icloud.com"},
+            {"from": "Emma", "content": "Loved that restaurant!", "from_username": "+1555123456"},
+        ]
 
-    async def signal_get_messages(self) -> list:
-        if not self.signal_api_url:
-            return self._demo_messages("signal")
+
+class SignalAdapter(MessagingAdapter):
+    def __init__(self, api_url: str):
+        self._api_url = api_url
+
+    @property
+    def platform_id(self) -> str: return "signal"
+    @property
+    def name(self) -> str: return "Signal"
+    @property
+    def is_configured(self) -> bool: return bool(self._api_url)
+    @property
+    def icon(self) -> str: return "shield"
+    @property
+    def color(self) -> str: return "#3A76F0"
+
+    async def get_messages(self, limit: int = 50) -> list[dict]:
+        if not self.is_configured:
+            return self._wrap_demo(self._demo_data())
         async with httpx.AsyncClient() as client:
             try:
-                resp = await client.get(f"{self.signal_api_url}/v1/receive", timeout=5.0)
+                resp = await client.get(f"{self._api_url}/v1/receive", timeout=5.0)
                 if resp.status_code == 200:
-                    data = resp.json()
                     messages = []
-                    for item in data:
+                    for item in resp.json():
                         envelope = item.get("envelope", {})
                         data_msg = envelope.get("dataMessage", {})
                         if data_msg.get("message"):
@@ -177,12 +259,31 @@ class MessagingService:
                 pass
         return []
 
-    # ── Discord ─────────────────────────────────────────────────────────
+    def _demo_data(self) -> list[dict]:
+        return [
+            {"from": "Secure Contact", "content": "Documents are ready for review", "from_username": "+1555999888"},
+        ]
 
-    async def discord_get_messages(self, limit: int = 50) -> list:
-        if not self.discord_bot_token:
-            return self._demo_messages("discord")
-        headers = {"Authorization": f"Bot {self.discord_bot_token}"}
+
+class DiscordAdapter(MessagingAdapter):
+    def __init__(self, token: str):
+        self._token = token
+
+    @property
+    def platform_id(self) -> str: return "discord"
+    @property
+    def name(self) -> str: return "Discord"
+    @property
+    def is_configured(self) -> bool: return bool(self._token)
+    @property
+    def icon(self) -> str: return "headphones"
+    @property
+    def color(self) -> str: return "#5865F2"
+
+    async def get_messages(self, limit: int = 50) -> list[dict]:
+        if not self.is_configured:
+            return self._wrap_demo(self._demo_data())
+        headers = {"Authorization": f"Bot {self._token}"}
         all_messages = []
         async with httpx.AsyncClient() as client:
             try:
@@ -193,10 +294,9 @@ class MessagingService:
                 if dm_resp.status_code == 200:
                     for ch in dm_resp.json()[:10]:
                         ch_id = ch.get("id", "")
-                        recipients = ch.get("recipients", [])
                         ch_name = ", ".join(
                             r.get("global_name") or r.get("username", "")
-                            for r in recipients
+                            for r in ch.get("recipients", [])
                         )
                         msgs_resp = await client.get(
                             f"https://discord.com/api/v10/channels/{ch_id}/messages",
@@ -226,30 +326,48 @@ class MessagingService:
                                 })
             except Exception:
                 pass
-        return all_messages or self._demo_messages("discord")
+        return all_messages or self._wrap_demo(self._demo_data())
 
-    async def discord_send(self, channel_id: str, text: str) -> dict:
-        if not self.discord_bot_token:
+    async def send_message(self, to: str, text: str, **kwargs) -> dict:
+        if not self.is_configured:
             return {"status": "demo", "message": "Discord not configured"}
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"https://discord.com/api/v10/channels/{channel_id}/messages",
-                headers={
-                    "Authorization": f"Bot {self.discord_bot_token}",
-                    "Content-Type": "application/json",
-                },
+                f"https://discord.com/api/v10/channels/{to}/messages",
+                headers={"Authorization": f"Bot {self._token}", "Content-Type": "application/json"},
                 json={"content": text},
             )
             if resp.status_code in (200, 201):
                 return resp.json()
             return {"error": resp.text}
 
-    # ── Slack ───────────────────────────────────────────────────────────
+    def _demo_data(self) -> list[dict]:
+        return [
+            {"from": "ModBot", "content": "Welcome to the server!", "from_username": "modbot"},
+            {"from": "GameBuddy", "content": "GGs last night, lets run it back", "from_username": "gamebuddy"},
+            {"from": "DevTeam", "content": "New PR merged: auth flow overhaul", "from_username": "devteam"},
+        ]
 
-    async def slack_get_messages(self, limit: int = 50) -> list:
-        if not self.slack_bot_token:
-            return self._demo_messages("slack")
-        headers = {"Authorization": f"Bearer {self.slack_bot_token}"}
+
+class SlackAdapter(MessagingAdapter):
+    def __init__(self, token: str):
+        self._token = token
+
+    @property
+    def platform_id(self) -> str: return "slack"
+    @property
+    def name(self) -> str: return "Slack"
+    @property
+    def is_configured(self) -> bool: return bool(self._token)
+    @property
+    def icon(self) -> str: return "hash"
+    @property
+    def color(self) -> str: return "#4A154B"
+
+    async def get_messages(self, limit: int = 50) -> list[dict]:
+        if not self.is_configured:
+            return self._wrap_demo(self._demo_data())
+        headers = {"Authorization": f"Bearer {self._token}"}
         all_messages = []
         async with httpx.AsyncClient() as client:
             try:
@@ -323,104 +441,103 @@ class MessagingService:
                             m["from"] = user_map[m["from"]]
             except Exception:
                 pass
-        return all_messages or self._demo_messages("slack")
+        return all_messages or self._wrap_demo(self._demo_data())
 
-    async def slack_send(self, channel_id: str, text: str) -> dict:
-        if not self.slack_bot_token:
+    async def send_message(self, to: str, text: str, **kwargs) -> dict:
+        if not self.is_configured:
             return {"status": "demo", "message": "Slack not configured"}
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://slack.com/api/chat.postMessage",
-                headers={
-                    "Authorization": f"Bearer {self.slack_bot_token}",
-                    "Content-Type": "application/json",
-                },
-                json={"channel": channel_id, "text": text},
+                headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
+                json={"channel": to, "text": text},
             )
             return resp.json()
 
-    # ── Unified Inbox ───────────────────────────────────────────────────
-
-    async def get_all_messages(self) -> list:
-        all_msgs = []
-        fetchers = [
-            self.telegram_get_updates,
-            self.whatsapp_get_messages,
-            self.whatsapp_biz_get_messages,
-            self.imessage_get_messages,
-            self.signal_get_messages,
-            self.discord_get_messages,
-            self.slack_get_messages,
+    def _demo_data(self) -> list[dict]:
+        return [
+            {"from": "Jira Bot", "content": "VOLO-142 moved to In Progress", "from_username": "jirabot"},
+            {"from": "Emily Davis", "content": "Can we sync on the Q2 roadmap?", "from_username": "emily"},
+            {"from": "#general", "content": "Happy Friday everyone!", "from_username": "general"},
         ]
-        for fetcher in fetchers:
+
+
+# ── Aggregator ────────────────────────────────────────────────────────────────
+
+class MessagingService:
+    """Unified inbox — registers adapters and provides route-facing methods."""
+
+    def __init__(self):
+        self._adapters: list[MessagingAdapter] = [
+            TelegramAdapter(token=settings.telegram_bot_token),
+            WhatsAppAdapter(
+                token=settings.whatsapp_api_token,
+                phone_id=settings.whatsapp_phone_id,
+            ),
+            WhatsAppBizAdapter(
+                biz_token=settings.whatsapp_business_token,
+                biz_phone_id=settings.whatsapp_business_phone_id,
+                fallback_token=settings.whatsapp_api_token,
+                fallback_phone_id=settings.whatsapp_phone_id,
+            ),
+            IMessageAdapter(),
+            SignalAdapter(api_url=settings.signal_api_url),
+            DiscordAdapter(token=settings.discord_bot_token),
+            SlackAdapter(token=settings.slack_bot_token),
+        ]
+        # Index by platform_id for O(1) lookup
+        self._by_id: dict[str, MessagingAdapter] = {a.platform_id: a for a in self._adapters}
+
+    # ── Public API used by routes ─────────────────────────────────────
+
+    async def get_all_messages(self) -> list[dict]:
+        all_msgs: list[dict] = []
+        for adapter in self._adapters:
             try:
-                msgs = await fetcher()
+                msgs = await adapter.get_messages()
                 all_msgs.extend(msgs)
             except Exception:
                 pass
         all_msgs.sort(key=lambda m: m.get("timestamp", ""), reverse=True)
         return all_msgs
 
-    def get_connected_platforms(self) -> list:
-        return [
-            {"id": "telegram", "name": "Telegram", "connected": bool(self.telegram_token), "icon": "send", "color": "#0088cc"},
-            {"id": "whatsapp", "name": "WhatsApp", "connected": bool(self.whatsapp_token), "icon": "message-circle", "color": "#25D366"},
-            {"id": "whatsapp_business", "name": "WhatsApp Business", "connected": bool(self.whatsapp_biz_token or self.whatsapp_token), "icon": "briefcase", "color": "#128C7E"},
-            {"id": "imessage", "name": "iMessage", "connected": True, "icon": "message-square", "color": "#34C759"},
-            {"id": "signal", "name": "Signal", "connected": bool(self.signal_api_url), "icon": "shield", "color": "#3A76F0"},
-            {"id": "discord", "name": "Discord", "connected": bool(self.discord_bot_token), "icon": "headphones", "color": "#5865F2"},
-            {"id": "slack", "name": "Slack", "connected": bool(self.slack_bot_token), "icon": "hash", "color": "#4A154B"},
-        ]
+    def get_connected_platforms(self) -> list[dict]:
+        return [a.to_status_dict() for a in self._adapters]
 
-    # ── Demo Data ───────────────────────────────────────────────────────
+    # ── Per-platform delegation (backwards-compat for route handlers) ──
 
-    def _demo_messages(self, platform: str) -> list:
-        now = datetime.now(timezone.utc).isoformat()
-        demos = {
-            "telegram": [
-                {"from": "Alex Chen", "content": "hey, did you see the new release?", "from_username": "@alexchen"},
-                {"from": "Sarah K", "content": "Meeting at 3pm works for me", "from_username": "@sarahk"},
-                {"from": "Dev Group", "content": "CI/CD pipeline is green", "from_username": "devteam"},
-            ],
-            "whatsapp": [
-                {"from": "Mom", "content": "Call me when you get a chance", "from_username": "+1234567890"},
-                {"from": "Jake", "content": "Running 10 mins late", "from_username": "+1234567891"},
-            ],
-            "whatsapp_business": [
-                {"from": "Acme Corp", "content": "Your order #4521 has shipped!", "from_username": "+1800555001"},
-            ],
-            "imessage": [
-                {"from": "Tom", "content": "Check out this link", "from_username": "tom@icloud.com"},
-                {"from": "Emma", "content": "Loved that restaurant!", "from_username": "+1555123456"},
-            ],
-            "signal": [
-                {"from": "Secure Contact", "content": "Documents are ready for review", "from_username": "+1555999888"},
-            ],
-            "discord": [
-                {"from": "ModBot", "content": "Welcome to the server!", "from_username": "modbot"},
-                {"from": "GameBuddy", "content": "GGs last night, lets run it back", "from_username": "gamebuddy"},
-                {"from": "DevTeam", "content": "New PR merged: auth flow overhaul", "from_username": "devteam"},
-            ],
-            "slack": [
-                {"from": "Jira Bot", "content": "VOLO-142 moved to In Progress", "from_username": "jirabot"},
-                {"from": "Emily Davis", "content": "Can we sync on the Q2 roadmap?", "from_username": "emily"},
-                {"from": "#general", "content": "Happy Friday everyone!", "from_username": "general"},
-            ],
-        }
-        return [
-            {
-                "platform": platform,
-                "id": f"demo-{platform}-{i}",
-                "from": msg["from"],
-                "from_username": msg["from_username"],
-                "avatar": None,
-                "content": msg["content"],
-                "timestamp": now,
-                "chat_id": msg["from_username"],
-                "chat_title": msg["from"],
-                "read": i > 0,
-                "type": "text",
-                "_demo": True,
-            }
-            for i, msg in enumerate(demos.get(platform, []))
-        ]
+    async def telegram_get_updates(self, limit: int = 50) -> list[dict]:
+        return await self._by_id["telegram"].get_messages(limit)
+
+    async def whatsapp_get_messages(self) -> list[dict]:
+        return await self._by_id["whatsapp"].get_messages()
+
+    async def whatsapp_biz_get_messages(self) -> list[dict]:
+        return await self._by_id["whatsapp_business"].get_messages()
+
+    async def imessage_get_messages(self, limit: int = 50) -> list[dict]:
+        return await self._by_id["imessage"].get_messages(limit)
+
+    async def signal_get_messages(self) -> list[dict]:
+        return await self._by_id["signal"].get_messages()
+
+    async def discord_get_messages(self, limit: int = 50) -> list[dict]:
+        return await self._by_id["discord"].get_messages(limit)
+
+    async def slack_get_messages(self, limit: int = 50) -> list[dict]:
+        return await self._by_id["slack"].get_messages(limit)
+
+    async def telegram_send(self, chat_id: str, text: str) -> dict:
+        return await self._by_id["telegram"].send_message(chat_id, text)
+
+    async def whatsapp_send(self, to: str, text: str) -> dict:
+        return await self._by_id["whatsapp"].send_message(to, text)
+
+    async def whatsapp_biz_send(self, to: str, text: str, template: Optional[str] = None) -> dict:
+        return await self._by_id["whatsapp_business"].send_message(to, text, template=template)
+
+    async def discord_send(self, channel_id: str, text: str) -> dict:
+        return await self._by_id["discord"].send_message(channel_id, text)
+
+    async def slack_send(self, channel_id: str, text: str) -> dict:
+        return await self._by_id["slack"].send_message(channel_id, text)
