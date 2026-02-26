@@ -20,7 +20,8 @@ async def test_list_memories(auth_client: AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert "memories" in data
-    assert "total" in data
+    assert "limit" in data
+    assert "offset" in data
 
 
 @pytest.mark.asyncio
