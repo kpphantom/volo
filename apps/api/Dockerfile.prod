@@ -35,11 +35,14 @@ USER volo
 
 EXPOSE 8000
 
-# Production: Gunicorn with Uvicorn workers
-# timeout=300 aligns with nginx proxy_read_timeout for long-lived WebSockets
+# Production: Gunicorn with Uvicorn workers.
+# WEB_CONCURRENCY defaults to (2 * nproc + 1) — the Gunicorn-recommended
+# formula for async/IO-bound workers.  Override via the WEB_CONCURRENCY env
+# var in docker-compose / Kubernetes manifests when needed.
+# timeout=300 aligns with nginx proxy_read_timeout for long-lived SSE streams.
 CMD sh -c "alembic upgrade head && python -m gunicorn main:app \
      --bind 0.0.0.0:8000 \
-     --workers ${WEB_CONCURRENCY:-2} \
+     --workers ${WEB_CONCURRENCY:-$(( $(nproc --all) * 2 + 1 ))} \
      --worker-class uvicorn.workers.UvicornWorker \
      --timeout 300 \
      --graceful-timeout 30 \
