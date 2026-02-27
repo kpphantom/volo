@@ -46,3 +46,6 @@ credentials.json
 nginx/active.conf
 screenshots/
 stress_test.py
+
+# Local planning docs
+DEPLOYMENT_PLAN.md
