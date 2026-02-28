@@ -2,9 +2,9 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# System deps for building
+# System deps for building native extensions (asyncpg, cryptography, bcrypt)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl && \
+    build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 COPY apps/api/requirements.txt .
@@ -15,12 +15,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Runtime deps only
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl && \
-    rm -rf /var/lib/apt/lists/*
-
-# Copy installed packages from builder
+# Copy installed packages from builder — no build tools in runtime image
 COPY --from=builder /install /usr/local
 
 # Copy API code
@@ -30,19 +25,22 @@ COPY apps/api/ .
 COPY apps/agent/agent.js /app/agent.js
 
 # Non-root user
-RUN useradd -m volo && chown -R volo:volo /app
+RUN useradd -M volo && chown -R volo:volo /app
 USER volo
 
 EXPOSE 8000
 
+# Health check using Python stdlib — no curl required in the image
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
 # Production: Gunicorn with Uvicorn workers.
-# WEB_CONCURRENCY defaults to (2 * nproc + 1) — the Gunicorn-recommended
-# formula for async/IO-bound workers.  Override via the WEB_CONCURRENCY env
-# var in docker-compose / Kubernetes manifests when needed.
+# WEB_CONCURRENCY defaults to 2*nproc+1 (Gunicorn recommended formula for async workers).
+# Uses plain `nproc` (not --all) so the count respects cgroup CPU limits inside the container.
 # timeout=300 aligns with nginx proxy_read_timeout for long-lived SSE streams.
 CMD sh -c "alembic upgrade head && python -m gunicorn main:app \
      --bind 0.0.0.0:8000 \
-     --workers ${WEB_CONCURRENCY:-$(( $(nproc --all) * 2 + 1 ))} \
+     --workers ${WEB_CONCURRENCY:-$(( $(nproc) * 2 + 1 ))} \
      --worker-class uvicorn.workers.UvicornWorker \
      --timeout 300 \
      --graceful-timeout 30 \

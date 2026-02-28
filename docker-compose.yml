@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ── PostgreSQL ─────────────────────────────────
   postgres:
@@ -66,32 +64,14 @@ services:
     ports:
       - "3001:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      # API_URL is served to the browser via /api/config at runtime.
+      # Must be a URL reachable from the user's browser, not the internal network name.
+      API_URL: http://localhost:8001
     depends_on:
       - api
     volumes:
       - ./apps/web/src:/app/src
     command: npm run dev
-
-  # ── Worker (Background Jobs) ──────────────────
-  worker:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
-    container_name: volo-worker
-    environment:
-      DATABASE_URL: postgresql+asyncpg://volo:volo@postgres:5432/volo
-      REDIS_URL: redis://redis:6379
-    env_file:
-      - ./apps/api/.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./apps/api:/app
-    command: python -m app.worker
 
 volumes:
   postgres_data:

@@ -1,0 +1,32 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment / secrets
+.env
+.env.*
+
+# Test artifacts
+tests/
+test.db
+*.db
+.pytest_cache/
+coverage/
+.coverage
+
+# Alembic (copied explicitly in prod; excluded to keep context lean)
+# alembic/ is needed — do NOT ignore it
+
+# Misc
+.git/
+.gitignore
+*.md
+ruff.toml
+pytest.ini

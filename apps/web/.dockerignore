@@ -1,0 +1,18 @@
+# Dependencies (reinstalled inside container)
+node_modules/
+
+# Build output
+.next/
+
+# Environment / secrets
+.env
+.env.*
+
+# Test artifacts
+coverage/
+*.log
+
+# Misc
+.git/
+.gitignore
+*.md
