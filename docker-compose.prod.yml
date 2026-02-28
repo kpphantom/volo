@@ -7,6 +7,26 @@
 # ────────────────────────────────────────────────────────────
 
 services:
+  # ── Internal DNS resolver ──────────────────────────────
+  # Resolves .internal hostnames privately; forwards everything else to public DNS.
+  # Config: dns/dnsmasq.conf — edit that file to move a service to a new droplet.
+  dns:
+    image: andyshinn/dnsmasq:2.86
+    container_name: volo-dns
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./dns/dnsmasq.conf:/etc/dnsmasq.conf:ro
+    networks:
+      volo-net:
+        ipv4_address: 172.20.0.2
+    healthcheck:
+      test: ["CMD", "nslookup", "volo-db.internal", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   # ── PostgreSQL ─────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
@@ -18,13 +38,19 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-volo}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Bound to all interfaces so it remains reachable over the private network
+    # when app servers are added. Access is restricted by the DO firewall —
+    # only allow port 5432 from trusted private IPs (10.108.0.0/20 or specific droplets).
+    ports:
+      - "0.0.0.0:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-volo}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - volo-net
+      volo-net:
+        ipv4_address: 172.20.0.10
 
   # ── Redis ──────────────────────────────────────
   redis:
@@ -34,6 +60,9 @@ services:
     command: redis-server --requirepass ${REDIS_PASSWORD:-voloredis}
     volumes:
       - redis_data:/data
+    # Same reasoning as postgres above — DO firewall restricts port 6379.
+    ports:
+      - "0.0.0.0:6379:6379"
     healthcheck:
       # REDISCLI_AUTH avoids showing the password in process listings (-a flag)
       test: ["CMD", "sh", "-c", "REDISCLI_AUTH=${REDIS_PASSWORD:-voloredis} redis-cli ping"]
@@ -41,7 +70,8 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - volo-net
+      volo-net:
+        ipv4_address: 172.20.0.11
 
   # ── API (FastAPI) ──────────────────────────────
   api:
@@ -50,15 +80,19 @@ services:
       dockerfile: apps/api/Dockerfile.prod
     container_name: volo-api
     restart: unless-stopped
+    dns:
+      - 172.20.0.2  # volo-dns container
     environment:
       APP_ENV: production
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-volo}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-volo}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-voloredis}@redis:6379
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-volo}:${POSTGRES_PASSWORD}@volo-db.internal:5432/${POSTGRES_DB:-volo}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-voloredis}@volo-cache.internal:6379
       FRONTEND_URL: https://volo.kingpinstrategies.com
       TWITTER_REDIRECT_URI: https://volo.kingpinstrategies.com/api/auth/twitter/callback
     env_file:
       - .env.prod
     depends_on:
+      dns:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -75,6 +109,8 @@ services:
       dockerfile: Dockerfile.prod
     container_name: volo-web
     restart: unless-stopped
+    dns:
+      - 172.20.0.2  # volo-dns container
     environment:
       NODE_ENV: production
       # API_URL is served to the browser at runtime via /api/config — not baked into the build.
@@ -93,3 +129,6 @@ volumes:
 networks:
   volo-net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
