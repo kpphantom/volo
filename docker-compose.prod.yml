@@ -12,20 +12,22 @@ services:
   # Resolves .internal hostnames privately; forwards everything else to public DNS.
   # Config: dns/dnsmasq.conf — edit that file to move a service to a new droplet.
   dns:
-    image: andyshinn/dnsmasq:2.86
+    image: alpine:3
     container_name: volo-dns
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
     volumes:
       - ./dns/dnsmasq.conf:/etc/dnsmasq.conf:ro
+    command: sh -c "apk add --no-cache dnsmasq && dnsmasq --no-daemon --conf-file=/etc/dnsmasq.conf"
     networks:
       volo-net:
         ipv4_address: 172.20.0.2
     healthcheck:
-      test: ["CMD", "nslookup", "volo-db.internal", "127.0.0.1"]
+      test: ["CMD", "sh", "-c", "nslookup volo-db.internal 127.0.0.1 >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
+      start_period: 30s
       retries: 3
 
   # ── PostgreSQL ─────────────────────────────────
