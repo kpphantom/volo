@@ -28,6 +28,8 @@ COPY apps/agent/agent.js /app/agent.js
 RUN useradd -M volo && chown -R volo:volo /app
 USER volo
 
+ENV PYTHONPATH=/app
+
 EXPOSE 8000
 
 # Health check using Python stdlib — no curl required in the image
