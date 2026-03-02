@@ -1,0 +1,166 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'   # Every Monday at 06:00 UTC — catches new CVEs without a code push
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  # ── SAST ────────────────────────────────────────────────────
+  # Static analysis: finds insecure code patterns before runtime.
+  sast:
+    name: SAST (Bandit + Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Bandit: Python-specific SAST — catches injection, weak crypto,
+      # insecure subprocess usage, hardcoded secrets, etc.
+      # -ll = medium severity and above; -q = suppress low-noise output.
+      - name: Bandit — Python SAST
+        run: |
+          pip install bandit
+          bandit -r apps/api/app -ll -q
+
+      # Semgrep: multi-language SAST with the OWASP Top 10 ruleset.
+      # Covers Python and TypeScript source in one pass.
+      # --error exits non-zero on any finding (fails CI).
+      - name: Semgrep — OWASP Top 10
+        run: |
+          pip install semgrep
+          semgrep scan \
+            --config=p/owasp-top-ten \
+            --config=p/python \
+            --config=p/typescript \
+            --error \
+            apps/api/app \
+            apps/web/src
+
+  # ── Dependency Scanning ─────────────────────────────────────
+  # Checks installed packages against public CVE databases.
+  dependency-scan:
+    name: Dependency Scanning (pip-audit + npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # pip-audit: scans requirements.txt against the PyPI advisory DB.
+      # Maintained by PyPA — the authoritative Python vulnerability source.
+      - name: pip-audit — Python CVEs
+        run: |
+          pip install pip-audit
+          pip-audit -r apps/api/requirements.txt
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      # npm audit: scans package-lock.json against the npm advisory DB.
+      # --audit-level=high: only fail on high severity to reduce transitive noise.
+      - name: npm audit — Node CVEs
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+  # ── DAST ────────────────────────────────────────────────────
+  # Dynamic analysis: fires real HTTP requests at a running API instance
+  # to find runtime vulnerabilities (missing headers, insecure cookies,
+  # SSRF, etc.) that SAST cannot detect from code alone.
+  zap:
+    name: DAST (OWASP ZAP)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: volo
+          POSTGRES_PASSWORD: volo
+          POSTGRES_DB: volo_zap
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: pip install -r requirements.txt
+
+      - name: Run Alembic migrations
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql+asyncpg://volo:volo@localhost:5432/volo_zap
+          JWT_SECRET: zap-ci-secret
+          APP_SECRET_KEY: zap-ci-secret
+        run: alembic upgrade head
+
+      - name: Start API
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql+asyncpg://volo:volo@localhost:5432/volo_zap
+          REDIS_URL: ''
+          JWT_SECRET: zap-ci-secret
+          APP_SECRET_KEY: zap-ci-secret
+          APP_ENV: test
+          TESTING: "1"
+        run: |
+          python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+          # Wait for the API to be ready (up to 30s)
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "API ready after ${i}s"
+              break
+            fi
+            echo "Waiting for API... ($i/15)"
+            sleep 2
+          done
+
+      # ZAP baseline scan: passive-only, no active attacks.
+      # Checks for missing security headers, insecure cookies, info disclosure, etc.
+      # fail_action: false — findings are reported but do not fail CI on first run.
+      # Change to true once you have triaged and resolved the initial findings.
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://localhost:8000'
+          fail_action: false
+          allow_issue_writing: false
+          artifact_name: zap-report
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: report_html.html
+          retention-days: 30
