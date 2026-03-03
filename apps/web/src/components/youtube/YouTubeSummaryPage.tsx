@@ -88,8 +88,8 @@ export function YouTubeSummaryPage() {
     try {
       const data = await api.post<SummaryResult>('/api/youtube/summarize', { url: url.trim(), style });
       setResult(data);
-    } catch {
-      setError('Could not summarize this video. Please check the URL and try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not summarize this video. Please check the URL and try again.');
     } finally {
       setLoading(false);
     }

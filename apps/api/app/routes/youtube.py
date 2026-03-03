@@ -54,8 +54,16 @@ async def summarize_video(body: SummarizeRequest, current_user: CurrentUser = De
     # Build context for AI summary
     if transcript:
         source_text = transcript[:8000]  # Limit to ~8k chars for context window
+        content_note = ""
     else:
         source_text = info.get("description", "")[:4000]
+        content_note = "\nNote: No transcript is available for this video. Base your summary on the description above.\n"
+
+    if not source_text.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="No transcript or description is available for this video. Try a video that has captions enabled.",
+        )
 
     style_instructions = {
         "concise": "Provide a concise 3-5 sentence summary.",
@@ -80,7 +88,7 @@ async def summarize_video(body: SummarizeRequest, current_user: CurrentUser = De
 
 Title: {info.get('title', 'Unknown')}
 Channel: {info.get('channel', 'Unknown')}
-
+{content_note}
 {style_instructions.get(body.style, style_instructions['concise'])}
 
 Content:
