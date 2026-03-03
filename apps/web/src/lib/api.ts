@@ -20,7 +20,7 @@ let _apiUrl = 'http://localhost:8000';
 export async function initApiUrl(): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
-    const res = await fetch('/api/config');
+    const res = await fetch('/runtime-config');
     if (res.ok) {
       const { apiUrl } = await res.json();
       if (apiUrl) _apiUrl = apiUrl;
