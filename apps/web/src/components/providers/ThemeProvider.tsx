@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useThemeStore, fontSizeScale } from '@/stores/themeStore';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const { mode, fontSize, highContrast, reducedMotion } = useThemeStore();
+  const { mode, fontSize, highContrast, reducedMotion, colorTheme } = useThemeStore();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -39,6 +39,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.classList.toggle('reduce-motion', reducedMotion);
   }, [reducedMotion]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', colorTheme);
+  }, [colorTheme]);
 
   return <>{children}</>;
 }

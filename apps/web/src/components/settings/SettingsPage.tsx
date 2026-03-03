@@ -810,26 +810,36 @@ function MessagingIntegrationsSection() {
 }
 
 function AppearanceSection() {
-  const [activeTheme, setActiveTheme] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('volo-color-theme') || 'midnight';
-    }
-    return 'midnight';
-  });
+  const [themeStore, setThemeStore] = useState<{
+    colorTheme: string;
+    setColorTheme: (t: 'midnight' | 'aurora' | 'ember' | 'ocean') => void;
+  } | null>(null);
   const [agentName, setAgentName] = useState('Volo');
   const [savingName, setSavingName] = useState(false);
 
+  useEffect(() => {
+    let unsub: (() => void) | undefined;
+    import('@/stores/themeStore').then(({ useThemeStore }) => {
+      const s = useThemeStore.getState();
+      setThemeStore({ colorTheme: s.colorTheme, setColorTheme: s.setColorTheme });
+      unsub = useThemeStore.subscribe((state) =>
+        setThemeStore({ colorTheme: state.colorTheme, setColorTheme: state.setColorTheme })
+      );
+    });
+    return () => unsub?.();
+  }, []);
+
   const themes = [
-    { id: 'midnight', name: 'Midnight', colors: ['#09090b', '#4c6ef5', '#e4e4e7'] },
-    { id: 'aurora', name: 'Aurora', colors: ['#0a0f0a', '#10b981', '#e4e4e7'] },
-    { id: 'ember', name: 'Ember', colors: ['#0f0a08', '#f59e0b', '#e4e4e7'] },
-    { id: 'ocean', name: 'Ocean', colors: ['#0a0f14', '#06b6d4', '#e4e4e7'] },
+    { id: 'midnight' as const, name: 'Midnight', colors: ['#09090b', '#4c6ef5', '#e4e4e7'] },
+    { id: 'aurora' as const, name: 'Aurora', colors: ['#0a0f0a', '#10b981', '#e4e4e7'] },
+    { id: 'ember' as const, name: 'Ember', colors: ['#0f0a08', '#f59e0b', '#e4e4e7'] },
+    { id: 'ocean' as const, name: 'Ocean', colors: ['#0a0f14', '#06b6d4', '#e4e4e7'] },
   ];
 
-  const selectTheme = (id: string) => {
-    setActiveTheme(id);
-    document.documentElement.setAttribute('data-theme', id);
-    localStorage.setItem('volo-color-theme', id);
+  const activeTheme = themeStore?.colorTheme ?? 'midnight';
+
+  const selectTheme = (id: 'midnight' | 'aurora' | 'ember' | 'ocean') => {
+    themeStore?.setColorTheme(id);
     toast.success(`Theme changed to ${themes.find(t => t.id === id)?.name}`);
   };
 
