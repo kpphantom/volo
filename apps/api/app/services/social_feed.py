@@ -7,11 +7,14 @@ adapters and provides the unified feed + connection-status used by routes.
 """
 
 import os
+import logging
 import httpx
 from datetime import datetime, timezone
 
 from app.services.social_oauth import social_oauth
 from app.services.base_platform import SocialAdapter
+
+logger = logging.getLogger("volo.social_feed")
 
 
 # ── Per-platform adapters ─────────────────────────────────────────────────────
@@ -31,28 +34,39 @@ class TwitterAdapter(SocialAdapter):
     @property
     def color(self) -> str: return "#1DA1F2"
 
-    async def _get_token(self, user_id: str | None) -> str:
-        if user_id:
-            t = await social_oauth.get_access_token(user_id, "twitter")
-            if t:
-                return t
-        return self._app_token
-
     async def get_feed(self, limit: int = 20, user_id: str | None = None) -> list[dict]:
-        token = await self._get_token(user_id)
-        if not token:
+        # Home timeline requires OAuth 2.0 user context — app-only token won't work.
+        user_token = None
+        if user_id:
+            user_token = await social_oauth.get_access_token(user_id, "twitter")
+        if not user_token:
             return self._wrap_demo(self._demo_data())
+
         async with httpx.AsyncClient() as client:
+            token = user_token
+            tl_params = {
+                "max_results": limit,
+                "tweet.fields": "created_at,public_metrics,author_id",
+                "expansions": "author_id",
+                "user.fields": "name,username,profile_image_url",
+            }
             resp = await client.get(
                 "https://api.twitter.com/2/users/me/timelines/reverse_chronological",
                 headers={"Authorization": f"Bearer {token}"},
-                params={
-                    "max_results": limit,
-                    "tweet.fields": "created_at,public_metrics,author_id",
-                    "expansions": "author_id",
-                    "user.fields": "name,username,profile_image_url",
-                },
+                params=tl_params,
             )
+
+            # Refresh expired token (2-hour lifetime) and retry once
+            if resp.status_code == 401 and user_id:
+                refreshed = await social_oauth.twitter_refresh(user_id)
+                if refreshed:
+                    token = refreshed
+                    resp = await client.get(
+                        "https://api.twitter.com/2/users/me/timelines/reverse_chronological",
+                        headers={"Authorization": f"Bearer {token}"},
+                        params=tl_params,
+                    )
+
             if resp.status_code == 200:
                 data = resp.json()
                 users = {u["id"]: u for u in data.get("includes", {}).get("users", [])}
@@ -75,6 +89,53 @@ class TwitterAdapter(SocialAdapter):
                         "url": f"https://x.com/{author.get('username', '')}/status/{tweet['id']}",
                     })
                 return posts
+
+            logger.warning(
+                "Twitter home timeline unavailable (HTTP %d); trying user tweets fallback",
+                resp.status_code,
+            )
+
+            # Fallback: user's own tweets — broader API tier availability
+            me_resp = await client.get(
+                "https://api.twitter.com/2/users/me",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"user.fields": "id,name,username,profile_image_url"},
+            )
+            if me_resp.status_code != 200:
+                logger.warning("Twitter /users/me failed: HTTP %d", me_resp.status_code)
+                return []
+
+            me = me_resp.json().get("data", {})
+            uid = me.get("id")
+            if not uid:
+                return []
+
+            tweets_resp = await client.get(
+                f"https://api.twitter.com/2/users/{uid}/tweets",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"max_results": limit, "tweet.fields": "created_at,public_metrics"},
+            )
+            if tweets_resp.status_code == 200:
+                posts = []
+                for tweet in tweets_resp.json().get("data", []):
+                    metrics = tweet.get("public_metrics", {})
+                    posts.append({
+                        "platform": "twitter",
+                        "id": tweet["id"],
+                        "author": me.get("name", "You"),
+                        "username": f"@{me.get('username', '')}",
+                        "avatar": me.get("profile_image_url", ""),
+                        "content": tweet.get("text", ""),
+                        "timestamp": tweet.get("created_at", ""),
+                        "likes": metrics.get("like_count", 0),
+                        "comments": metrics.get("reply_count", 0),
+                        "shares": metrics.get("retweet_count", 0),
+                        "media": [],
+                        "url": f"https://x.com/{me.get('username', '')}/status/{tweet['id']}",
+                    })
+                return posts
+
+            logger.warning("Twitter user tweets fallback also failed: HTTP %d", tweets_resp.status_code)
         return []
 
     def _demo_data(self) -> list[dict]:

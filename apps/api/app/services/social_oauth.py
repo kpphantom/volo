@@ -400,4 +400,73 @@ class SocialOAuthService:
             return {"tokens": tokens, "profile": profile}
 
 
+    # ── Twitter token refresh ────────────────────────────────────────
+
+    async def get_integration_data(self, user_id: str, platform: str) -> dict | None:
+        """Return the full stored integration config, or None if not connected."""
+        async with async_session() as session:
+            result = await session.execute(
+                select(Integration).where(
+                    and_(Integration.user_id == user_id, Integration.type == platform)
+                )
+            )
+            integration = result.scalar_one_or_none()
+            if integration and integration.status == "connected":
+                return integration.config
+        return None
+
+    async def twitter_refresh(self, user_id: str) -> str | None:
+        """
+        Refresh an expired Twitter access token using the stored refresh_token.
+        Returns the new access token on success, None on failure.
+        Twitter OAuth 2.0 access tokens expire after 2 hours when offline.access was granted.
+        """
+        from app.config import settings  # avoid circular import at module level
+
+        config = await self.get_integration_data(user_id, "twitter")
+        if not config:
+            return None
+        refresh_token = config.get("refresh_token", "")
+        if not refresh_token or not settings.twitter_client_id:
+            return None
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "https://api.twitter.com/2/oauth2/token",
+                    data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+                    auth=(settings.twitter_client_id, settings.twitter_client_secret),
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                if resp.status_code != 200:
+                    logger.warning("Twitter refresh failed: HTTP %d %s", resp.status_code, resp.text[:200])
+                    return None
+                tokens = resp.json()
+                new_access = tokens.get("access_token", "")
+                if not new_access:
+                    return None
+                # Rotate both tokens (Twitter may issue a new refresh_token)
+                new_config = {
+                    **config,
+                    "access_token": new_access,
+                    "refresh_token": tokens.get("refresh_token", refresh_token),
+                }
+                async with async_session() as session:
+                    result = await session.execute(
+                        select(Integration).where(
+                            and_(Integration.user_id == user_id, Integration.type == "twitter")
+                        )
+                    )
+                    integration = result.scalar_one_or_none()
+                    if integration:
+                        integration.config = new_config
+                        await session.commit()
+                await cache.set(f"social_token:{user_id}:twitter", new_access, ttl=3600)
+                logger.info("Twitter token refreshed for user %s", user_id)
+                return new_access
+        except Exception:
+            logger.exception("Twitter token refresh error for user %s", user_id)
+        return None
+
+
 social_oauth = SocialOAuthService()
