@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useThemeStore, fontSizeScale } from '@/stores/themeStore';
+import { useThemeStore, fontSizeScale, type ColorTheme } from '@/stores/themeStore';
 
 describe('themeStore', () => {
   beforeEach(() => {
@@ -8,6 +8,7 @@ describe('themeStore', () => {
       fontSize: 'default',
       reducedMotion: false,
       highContrast: false,
+      colorTheme: 'midnight',
     });
   });
 
@@ -17,6 +18,10 @@ describe('themeStore', () => {
 
   it('defaults to default font size', () => {
     expect(useThemeStore.getState().fontSize).toBe('default');
+  });
+
+  it('defaults to midnight color theme', () => {
+    expect(useThemeStore.getState().colorTheme).toBe('midnight');
   });
 
   describe('setMode()', () => {
@@ -70,6 +75,22 @@ describe('themeStore', () => {
       useThemeStore.setState({ highContrast: true });
       useThemeStore.getState().setHighContrast(false);
       expect(useThemeStore.getState().highContrast).toBe(false);
+    });
+  });
+
+  describe('setColorTheme()', () => {
+    it('handles all valid color themes', () => {
+      const themes: ColorTheme[] = ['midnight', 'aurora', 'ember', 'ocean'];
+      for (const theme of themes) {
+        useThemeStore.getState().setColorTheme(theme);
+        expect(useThemeStore.getState().colorTheme).toBe(theme);
+      }
+    });
+
+    it('switches back to midnight', () => {
+      useThemeStore.getState().setColorTheme('aurora');
+      useThemeStore.getState().setColorTheme('midnight');
+      expect(useThemeStore.getState().colorTheme).toBe('midnight');
     });
   });
 
